@@ -350,20 +350,23 @@ export function CreateGoogleFormWizard({
             }
 
             if (event.status === 'ERROR') {
-              setErrorMsg(event.error || 'Failed to generate Google Form.');
-              if (
-                event.requiresReconnect ||
-                (event.error && (
+              const isOAuth =
+                Boolean(event.requiresReconnect) ||
+                Boolean(event.error && (
                   event.error.toLowerCase().includes('invalid_grant') ||
                   event.error.toLowerCase().includes('reconnect') ||
                   event.error.toLowerCase().includes('token has been expired') ||
                   event.error.toLowerCase().includes('unauthorized')
-                ))
-              ) {
+                ));
+
+              if (isOAuth) {
                 setRequiresReconnect(true);
+                setErrorMsg('Google authorization has expired or been revoked. Reconnect your Google account to continue.');
                 if (event.reconnectUrl) {
                   setReconnectUrl(event.reconnectUrl);
                 }
+              } else {
+                setErrorMsg(event.error || 'Failed to generate Google Form.');
               }
               setIsGenerating(false);
               return;
@@ -383,20 +386,23 @@ export function CreateGoogleFormWizard({
         const result: any = await createGoogleFeedbackFormAction(payload as any);
         setIsGenerating(false);
         if (!result.success) {
-          setErrorMsg(result.error || 'Failed to generate Google Form.');
-          if (
-            result.requiresReconnect ||
-            (result.error && (
+          const isOAuth =
+            Boolean(result.requiresReconnect) ||
+            Boolean(result.error && (
               result.error.toLowerCase().includes('invalid_grant') ||
               result.error.toLowerCase().includes('reconnect') ||
               result.error.toLowerCase().includes('token has been expired') ||
               result.error.toLowerCase().includes('unauthorized')
-            ))
-          ) {
+            ));
+
+          if (isOAuth) {
             setRequiresReconnect(true);
+            setErrorMsg('Google authorization has expired or been revoked. Reconnect your Google account to continue.');
             if (result.reconnectUrl) {
               setReconnectUrl(result.reconnectUrl);
             }
+          } else {
+            setErrorMsg(result.error || 'Failed to generate Google Form.');
           }
         } else {
           setCreatedForm(result.form as FeedbackForm);

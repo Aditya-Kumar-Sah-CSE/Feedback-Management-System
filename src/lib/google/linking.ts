@@ -1,5 +1,5 @@
 import { FORM_CONFIRMATION_MESSAGE } from './template';
-import { getGoogleServices } from './auth';
+import { executeWithGoogleOAuthRetry, ensureGoogleCredentialsLoaded } from './auth';
 
 export interface LinkingResult {
   success: boolean;
@@ -26,15 +26,16 @@ async function ensureWriterAccess(fileId: string): Promise<void> {
   if (!runnerEmail || !fileId) return;
 
   try {
-    const { drive } = getGoogleServices();
-    await drive.permissions.create({
-      fileId,
-      requestBody: {
-        role: 'writer',
-        type: 'user',
-        emailAddress: runnerEmail,
-      },
-      fields: 'id',
+    await executeWithGoogleOAuthRetry(async ({ drive }) => {
+      await drive.permissions.create({
+        fileId,
+        requestBody: {
+          role: 'writer',
+          type: 'user',
+          emailAddress: runnerEmail,
+        },
+        fields: 'id',
+      });
     });
   } catch {
     // Drive API throws if already shared, or if sharing with self; safe to ignore
@@ -54,6 +55,7 @@ export async function linkFormToSpreadsheet(
   sheetId: string,
   confirmationMessage: string = FORM_CONFIRMATION_MESSAGE
 ): Promise<LinkingResult> {
+  await ensureGoogleCredentialsLoaded();
   const scriptUrl = process.env.GOOGLE_APPS_SCRIPT_URL;
   const scriptSecret = process.env.GOOGLE_APPS_SCRIPT_SECRET;
 

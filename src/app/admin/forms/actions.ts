@@ -615,6 +615,9 @@ export async function provisionGoogleFormAndSheetAction(params: {
   let googleSheetResult;
 
   try {
+    // Pre-hydrate persistent Google OAuth credentials from database
+    await ensureGoogleCredentialsLoaded();
+
     // Concurrent creation of Google Form (+ Multiple Choice Grids if items provided) and Google Sheet
     const [formResult, sheetResult] = await Promise.all([
       createGoogleFeedbackForm({

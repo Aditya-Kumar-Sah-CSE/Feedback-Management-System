@@ -1,4 +1,4 @@
-import { getGoogleServices } from './auth';
+import { executeWithGoogleOAuthRetry } from './auth';
 import { BCE_FEEDBACK_PARAMETERS, MultiFacultyGridItem } from './template';
 
 export interface CreateSheetResult {
@@ -54,119 +54,120 @@ export function buildMultiFacultySheetHeaders(items: MultiFacultyGridItem[]): st
 }
 
 /**
- * Creates a new Google Spreadsheet for feedback responses and styles the header row
+ * Creates a new Google Spreadsheet for feedback responses and styles the header row.
+ * Uses persistent database credentials with automatic OAuth single-retry.
  */
 export async function createFeedbackSpreadsheet(params: {
   title: string;
   items?: MultiFacultyGridItem[];
 }): Promise<CreateSheetResult> {
-  const { sheets } = getGoogleServices();
+  return executeWithGoogleOAuthRetry(async ({ sheets }) => {
+    const sheetTitle = `Responses — ${params.title}`;
 
-  const sheetTitle = `Responses — ${params.title}`;
-
-  // 1. Create Spreadsheet
-  const res = await sheets.spreadsheets.create({
-    requestBody: {
-      properties: {
-        title: sheetTitle,
-      },
-      sheets: [
-        {
-          properties: {
-            title: 'Form Responses',
-            gridProperties: {
-              frozenRowCount: 1,
-            },
-          },
-        },
-      ],
-    },
-  });
-
-  const spreadsheetId = res.data.spreadsheetId;
-  const spreadsheetUrl = res.data.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
-  const gridSheetId = res.data.sheets?.[0]?.properties?.sheetId ?? 0;
-
-  if (!spreadsheetId) {
-    throw new Error('Google Sheets API failed to create spreadsheet');
-  }
-
-  const targetHeaders =
-    params.items && params.items.length > 0
-      ? buildMultiFacultySheetHeaders(params.items)
-      : FEEDBACK_SHEET_HEADERS;
-
-  const lastColLetter = getColumnLetter(targetHeaders.length);
-
-  // 2. Initialize Header Row
-  await sheets.spreadsheets.values.update({
-    spreadsheetId,
-    range: `'Form Responses'!A1:${lastColLetter}1`,
-    valueInputOption: 'USER_ENTERED',
-    requestBody: {
-      values: [targetHeaders],
-    },
-  });
-
-  // 3. Apply professional styling to header row (bold, dark navy background, white text)
-  try {
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
+    // 1. Create Spreadsheet
+    const res = await sheets.spreadsheets.create({
       requestBody: {
-        requests: [
+        properties: {
+          title: sheetTitle,
+        },
+        sheets: [
           {
-            repeatCell: {
-              range: {
-                sheetId: gridSheetId,
-                startRowIndex: 0,
-                endRowIndex: 1,
-                startColumnIndex: 0,
-                endColumnIndex: targetHeaders.length,
-              },
-              cell: {
-                userEnteredFormat: {
-                  backgroundColor: {
-                    red: 0.1,
-                    green: 0.18,
-                    blue: 0.36, // Navy BCE tone
-                  },
-                  textFormat: {
-                    foregroundColor: {
-                      red: 1.0,
-                      green: 1.0,
-                      blue: 1.0,
-                    },
-                    bold: true,
-                    fontSize: 10,
-                  },
-                  horizontalAlignment: 'CENTER',
-                },
-              },
-              fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)',
-            },
-          },
-          {
-            autoResizeDimensions: {
-              dimensions: {
-                sheetId: gridSheetId,
-                dimension: 'COLUMNS',
-                startIndex: 0,
-                endIndex: FEEDBACK_SHEET_HEADERS.length,
+            properties: {
+              title: 'Form Responses',
+              gridProperties: {
+                frozenRowCount: 1,
               },
             },
           },
         ],
       },
     });
-  } catch (styleErr) {
-    // Non-fatal if styling fails on restricted service accounts
-    console.warn('Google Sheet header styling warning:', styleErr);
-  }
 
-  return {
-    spreadsheetId,
-    spreadsheetUrl,
-  };
+    const spreadsheetId = res.data.spreadsheetId;
+    const spreadsheetUrl = res.data.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+    const gridSheetId = res.data.sheets?.[0]?.properties?.sheetId ?? 0;
+
+    if (!spreadsheetId) {
+      throw new Error('Google Sheets API failed to create spreadsheet');
+    }
+
+    const targetHeaders =
+      params.items && params.items.length > 0
+        ? buildMultiFacultySheetHeaders(params.items)
+        : FEEDBACK_SHEET_HEADERS;
+
+    const lastColLetter = getColumnLetter(targetHeaders.length);
+
+    // 2. Initialize Header Row
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `'Form Responses'!A1:${lastColLetter}1`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [targetHeaders],
+      },
+    });
+
+    // 3. Apply professional styling to header row (bold, dark navy background, white text)
+    try {
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [
+            {
+              repeatCell: {
+                range: {
+                  sheetId: gridSheetId,
+                  startRowIndex: 0,
+                  endRowIndex: 1,
+                  startColumnIndex: 0,
+                  endColumnIndex: targetHeaders.length,
+                },
+                cell: {
+                  userEnteredFormat: {
+                    backgroundColor: {
+                      red: 0.1,
+                      green: 0.18,
+                      blue: 0.36, // Navy BCE tone
+                    },
+                    textFormat: {
+                      foregroundColor: {
+                        red: 1.0,
+                        green: 1.0,
+                        blue: 1.0,
+                      },
+                      bold: true,
+                      fontSize: 10,
+                    },
+                    horizontalAlignment: 'CENTER',
+                  },
+                },
+                fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)',
+              },
+            },
+            {
+              autoResizeDimensions: {
+                dimensions: {
+                  sheetId: gridSheetId,
+                  dimension: 'COLUMNS',
+                  startIndex: 0,
+                  endIndex: targetHeaders.length,
+                },
+              },
+            },
+          ],
+        },
+      });
+    } catch (styleErr) {
+      // Non-fatal if styling fails on restricted service accounts
+      console.warn('Google Sheet header styling warning:', styleErr);
+    }
+
+    return {
+      spreadsheetId,
+      spreadsheetUrl,
+    };
+  });
 }
 
 /**
@@ -178,22 +179,23 @@ export async function appendResponsesToSheet(
 ) {
   if (rows.length === 0) return { updatedRows: 0 };
 
-  const { sheets } = getGoogleServices();
-  const lastColLetter = getColumnLetter(FEEDBACK_SHEET_HEADERS.length);
+  return executeWithGoogleOAuthRetry(async ({ sheets }) => {
+    const lastColLetter = getColumnLetter(FEEDBACK_SHEET_HEADERS.length);
 
-  const res = await sheets.spreadsheets.values.append({
-    spreadsheetId,
-    range: `'Form Responses'!A:${lastColLetter}`,
-    valueInputOption: 'USER_ENTERED',
-    insertDataOption: 'INSERT_ROWS',
-    requestBody: {
-      values: rows,
-    },
+    const res = await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: `'Form Responses'!A:${lastColLetter}`,
+      valueInputOption: 'USER_ENTERED',
+      insertDataOption: 'INSERT_ROWS',
+      requestBody: {
+        values: rows,
+      },
+    });
+
+    return {
+      updatedRows: res.data.updates?.updatedRows || rows.length,
+    };
   });
-
-  return {
-    updatedRows: res.data.updates?.updatedRows || rows.length,
-  };
 }
 
 /**
@@ -201,29 +203,30 @@ export async function appendResponsesToSheet(
  */
 export async function getExistingSheetResponseIds(spreadsheetId: string): Promise<Set<string>> {
   try {
-    const { sheets } = getGoogleServices();
-    const headerRes = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: "'Form Responses'!1:1",
+    return await executeWithGoogleOAuthRetry(async ({ sheets }) => {
+      const headerRes = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: "'Form Responses'!1:1",
+      });
+
+      const headers = (headerRes.data.values?.[0] || []).map(h => String(h || '').trim().toLowerCase());
+      const respIdIdx = headers.findIndex(h => h.includes('response id') || (h === 'id' && !h.includes('student')));
+
+      if (respIdIdx === -1) {
+        return new Set<string>();
+      }
+
+      const colLetter = getColumnLetter(respIdIdx + 1);
+      const res = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `'Form Responses'!${colLetter}2:${colLetter}`,
+      });
+
+      const rows = res.data.values || [];
+      return new Set(rows.map(r => String(r[0])));
     });
-
-    const headers = (headerRes.data.values?.[0] || []).map(h => String(h || '').trim().toLowerCase());
-    const respIdIdx = headers.findIndex(h => h.includes('response id') || (h === 'id' && !h.includes('student')));
-
-    if (respIdIdx === -1) {
-      return new Set();
-    }
-
-    const colLetter = getColumnLetter(respIdIdx + 1);
-    const res = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: `'Form Responses'!${colLetter}2:${colLetter}`,
-    });
-
-    const rows = res.data.values || [];
-    return new Set(rows.map(r => String(r[0])));
   } catch {
-    return new Set();
+    return new Set<string>();
   }
 }
 
@@ -235,47 +238,49 @@ export async function fetchSingleResponseFromSheet(
   responseId: string
 ): Promise<{ headers: string[]; row: string[] } | null> {
   try {
-    const { sheets } = getGoogleServices();
-    let rows: any[][] = [];
-    try {
-      const res = await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range: "'Form Responses'!A1:ZZ",
-      });
-      rows = res.data.values || [];
-    } catch {
-      // Fallback: query first sheet title dynamically
-      const meta = await sheets.spreadsheets.get({ spreadsheetId });
-      const sheetTitle = meta.data.sheets?.[0]?.properties?.title || 'Form Responses';
-      const res = await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range: `'${sheetTitle}'!A1:ZZ`,
-      });
-      rows = res.data.values || [];
-    }
-
-    if (rows.length < 2) return null;
-
-    const headers = (rows[0] || []).map(h => String(h || '').trim());
-    const respIdIdx = headers.findIndex(
-      h => h.toLowerCase().includes('response id') || (h.toLowerCase() === 'id' && !h.toLowerCase().includes('student'))
-    );
-
-    if (respIdIdx === -1) return null;
-
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i];
-      if (String(row[respIdIdx] || '').trim() === responseId.trim()) {
-        return {
-          headers,
-          row: row.map(cell => String(cell || '').trim()),
-        };
+    return await executeWithGoogleOAuthRetry(async ({ sheets }) => {
+      let rows: any[][] = [];
+      try {
+        const res = await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: "'Form Responses'!A1:ZZ",
+        });
+        rows = res.data.values || [];
+      } catch {
+        // Fallback: query first sheet title dynamically
+        const meta = await sheets.spreadsheets.get({ spreadsheetId });
+        const sheetTitle = meta.data.sheets?.[0]?.properties?.title || 'Form Responses';
+        const res = await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: `'${sheetTitle}'!A1:ZZ`,
+        });
+        rows = res.data.values || [];
       }
-    }
 
-    return null;
+      if (rows.length < 2) return null;
+
+      const headers = (rows[0] || []).map(h => String(h || '').trim());
+      const respIdIdx = headers.findIndex(
+        h => h.toLowerCase().includes('response id') || (h.toLowerCase() === 'id' && !h.toLowerCase().includes('student'))
+      );
+
+      if (respIdIdx === -1) return null;
+
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (String(row[respIdIdx] || '').trim() === responseId.trim()) {
+          return {
+            headers,
+            row: row.map(cell => String(cell || '').trim()),
+          };
+        }
+      }
+
+      return null;
+    });
   } catch (err) {
     console.error(`[Sheets] Failed to fetch single response ${responseId}:`, err);
     return null;
   }
 }
+

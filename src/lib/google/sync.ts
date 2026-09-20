@@ -1,5 +1,5 @@
 import type { forms_v1 } from 'googleapis';
-import { getGoogleServices } from './auth';
+import { executeWithGoogleOAuthRetry } from './auth';
 import { appendResponsesToSheet, getExistingSheetResponseIds } from './sheets';
 import { BCE_FEEDBACK_PARAMETERS } from './template';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -28,11 +28,38 @@ export async function syncFormResponsesToSheet(params: {
   const { googleFormId, googleSheetId, formId } = params;
 
   try {
-    const { forms, sheets } = getGoogleServices();
+    // Fetch form structure, submitted responses, and sheet state via OAuth retry wrapper
+    const { items, allResponses, sheetHeaders, sheetDataRows } = await executeWithGoogleOAuthRetry(
+      async ({ forms, sheets }) => {
+        const formMetadata = await forms.forms.get({ formId: googleFormId });
+        const items = formMetadata.data.items || [];
 
-    // 1. Fetch form structure to map question IDs
-    const formMetadata = await forms.forms.get({ formId: googleFormId });
-    const items = formMetadata.data.items || [];
+        let allResponses: forms_v1.Schema$FormResponse[] = [];
+        try {
+          const responsesRes = await forms.forms.responses.list({ formId: googleFormId });
+          allResponses = (responsesRes.data.responses || []) as forms_v1.Schema$FormResponse[];
+        } catch (formsErr: unknown) {
+          console.warn('[Sync] Google Forms API responses list notice:', formsErr instanceof Error ? formsErr.message : formsErr);
+        }
+
+        let sheetHeaders: string[] = [];
+        let sheetDataRows: any[][] = [];
+        try {
+          const sheetDataRes = await sheets.spreadsheets.values.get({
+            spreadsheetId: googleSheetId,
+            range: "'Form Responses'!A1:ZZ",
+          });
+          const allSheetValues = sheetDataRes.data.values || [];
+          sheetHeaders = (allSheetValues[0] || []).map(h => String(h || '').trim());
+          sheetDataRows = allSheetValues.slice(1);
+        } catch {
+          sheetHeaders = [];
+          sheetDataRows = [];
+        }
+
+        return { items, allResponses, sheetHeaders, sheetDataRows };
+      }
+    );
 
     // Map questionId -> parameter index (0..7) and identification / comment fields
     const questionIdToParamIndex = new Map<string, number>();
@@ -83,31 +110,7 @@ export async function syncFormResponsesToSheet(params: {
       }
     });
 
-    // 2. Fetch all submitted responses from Forms API (safely)
-    let allResponses: forms_v1.Schema$FormResponse[] = [];
-    try {
-      const responsesRes = await forms.forms.responses.list({ formId: googleFormId });
-      allResponses = (responsesRes.data.responses || []) as forms_v1.Schema$FormResponse[];
-    } catch (formsErr: unknown) {
-      console.warn('[Sync] Google Forms API responses list notice:', formsErr instanceof Error ? formsErr.message : formsErr);
-    }
     const totalResponses = allResponses.length;
-
-    // 3. Inspect target Google Sheet headers and existing data rows
-    let sheetHeaders: string[] = [];
-    let sheetDataRows: any[][] = [];
-    try {
-      const sheetDataRes = await sheets.spreadsheets.values.get({
-        spreadsheetId: googleSheetId,
-        range: "'Form Responses'!A1:ZZ",
-      });
-      const allSheetValues = sheetDataRes.data.values || [];
-      sheetHeaders = (allSheetValues[0] || []).map(h => String(h || '').trim());
-      sheetDataRows = allSheetValues.slice(1);
-    } catch {
-      sheetHeaders = [];
-      sheetDataRows = [];
-    }
 
     if (totalResponses === 0 && sheetDataRows.length === 0) {
       return {

@@ -8,7 +8,11 @@ import {
   provisionGoogleFormAndSheetAction,
 } from '@/app/admin/forms/actions';
 import { CreateFormPayload } from '@/lib/validation';
-import { formatGoogleErrorMessage } from '@/lib/google/auth';
+import {
+  ensureGoogleCredentialsLoaded,
+  formatGoogleErrorMessage,
+  isGoogleOAuthError,
+} from '@/lib/google/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -84,6 +88,9 @@ export async function POST(req: NextRequest) {
   // Run the staged workflow asynchronously
   (async () => {
     try {
+      // Step 0: Ensure Google credentials from Supabase are hydrated into memory before starting
+      await ensureGoogleCredentialsLoaded();
+
       // Step 1: Fast local validation & draft creation
       await sendEvent({
         status: 'PREPARING',
@@ -93,11 +100,19 @@ export async function POST(req: NextRequest) {
 
       const prepRes = await validateAndPrepareFormDraftAction(payload, authenticatedClient);
       if (!prepRes.success || !prepRes.draftFormId) {
+        const isOAuth = (prepRes as any).requiresReconnect || isGoogleOAuthError(prepRes.error);
+        const formatted = formatGoogleErrorMessage(prepRes.error, '/admin/dashboard/forms/create');
         await sendEvent({
           status: 'ERROR',
           stepNumber: 1,
-          message: prepRes.error || 'Validation failed.',
-          error: prepRes.error || 'Validation failed.',
+          message: isOAuth
+            ? 'Google authorization has expired or been revoked. Reconnect your Google account to continue.'
+            : (prepRes.error || 'Validation failed.'),
+          error: isOAuth
+            ? 'Google authorization has expired or been revoked. Reconnect your Google account to continue.'
+            : (prepRes.error || 'Validation failed.'),
+          requiresReconnect: isOAuth ? true : (prepRes as any).requiresReconnect,
+          reconnectUrl: isOAuth ? formatted.reconnectUrl : (prepRes as any).reconnectUrl,
         });
         await writer.close();
         return;
@@ -125,13 +140,19 @@ export async function POST(req: NextRequest) {
       });
 
       if (!provRes.success || !provRes.form) {
+        const isOAuth = (provRes as any).requiresReconnect || isGoogleOAuthError(provRes.error);
+        const formatted = formatGoogleErrorMessage(provRes.error, '/admin/dashboard/forms/create');
         await sendEvent({
           status: 'ERROR',
           stepNumber: 4,
-          message: provRes.error || 'Google provisioning failed.',
-          error: provRes.error || 'Google provisioning failed.',
-          requiresReconnect: (provRes as any).requiresReconnect,
-          reconnectUrl: (provRes as any).reconnectUrl,
+          message: isOAuth
+            ? 'Google authorization has expired or been revoked. Reconnect your Google account to continue.'
+            : (provRes.error || 'Google provisioning failed.'),
+          error: isOAuth
+            ? 'Google authorization has expired or been revoked. Reconnect your Google account to continue.'
+            : (provRes.error || 'Google provisioning failed.'),
+          requiresReconnect: isOAuth ? true : (provRes as any).requiresReconnect,
+          reconnectUrl: isOAuth ? formatted.reconnectUrl : (provRes as any).reconnectUrl,
         });
         await writer.close();
         return;
@@ -149,8 +170,12 @@ export async function POST(req: NextRequest) {
       await sendEvent({
         status: 'ERROR',
         stepNumber: 5,
-        message: formatted.message,
-        error: formatted.message,
+        message: formatted.requiresReconnect
+          ? 'Google authorization has expired or been revoked. Reconnect your Google account to continue.'
+          : formatted.message,
+        error: formatted.requiresReconnect
+          ? 'Google authorization has expired or been revoked. Reconnect your Google account to continue.'
+          : formatted.message,
         requiresReconnect: formatted.requiresReconnect,
         reconnectUrl: formatted.reconnectUrl,
       });

@@ -19,6 +19,15 @@ export interface GoogleConfigStatus {
 
 // In-memory token cache for process lifetime
 let cachedRefreshToken: string | null = null;
+let cachedTokenSource: 'database' | 'environment' | 'none' = 'none';
+
+/**
+ * Invalidates the in-memory token cache so the next request re-hydrates from persistent storage
+ */
+export function invalidateCachedGoogleToken(): void {
+  cachedRefreshToken = null;
+  cachedTokenSource = 'none';
+}
 
 /**
  * Validates returnTo path to ensure it is internal only.
@@ -93,7 +102,7 @@ function loadLocalEnvIfNeeded(): void {
 }
 
 /**
- * Synchronously gets currently available refresh token
+ * Synchronously gets currently cached or available refresh token
  */
 export function getStoredRefreshToken(): string | undefined {
   if (cachedRefreshToken) {
@@ -105,41 +114,69 @@ export function getStoredRefreshToken(): string | undefined {
     loadLocalEnvIfNeeded();
   }
 
-  if (process.env.GOOGLE_REFRESH_TOKEN) {
-    cachedRefreshToken = process.env.GOOGLE_REFRESH_TOKEN;
-    return cachedRefreshToken;
-  }
-
-  return undefined;
+  return process.env.GOOGLE_REFRESH_TOKEN || undefined;
 }
 
 /**
- * Async resolution of refresh token from memory, environment, or persistent Supabase storage
+ * Async resolution of refresh token with STRICT PRODUCTION PRIORITY:
+ * 1. Supabase google_oauth_tokens table is the primary persistent credential source.
+ * 2. If DB contains a valid token: always use DB token.
+ * 3. If DB query fails: DO NOT silently fall back to potentially stale env token; fail safely with an error.
+ * 4. If DB has no credential row: environment token may be used only as a fallback.
+ *
+ * @param forceFresh - If true, bypasses the in-memory cache and re-queries Supabase.
  */
-export async function getStoredRefreshTokenAsync(): Promise<string | undefined> {
-  const syncToken = getStoredRefreshToken();
-  if (syncToken) {
-    return syncToken;
+export async function getStoredRefreshTokenAsync(forceFresh = false): Promise<string | undefined> {
+  if (!forceFresh && cachedRefreshToken) {
+    return cachedRefreshToken;
   }
 
-  // Query persistent database storage (for production / Vercel where .env.local is ephemeral)
+  // 1. Supabase google_oauth_tokens is the PRIMARY credential source
   try {
     const supabase = createAdminClient();
-    if (supabase) {
+    if (!supabase) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('Database client configuration missing: Unable to query persistent Google credentials.');
+      }
+    } else {
       const { data, error } = await supabase
         .from('google_oauth_tokens')
         .select('refresh_token')
         .eq('id', 'default')
         .maybeSingle();
 
-      if (!error && data?.refresh_token) {
-        cachedRefreshToken = data.refresh_token;
-        process.env.GOOGLE_REFRESH_TOKEN = data.refresh_token;
-        return data.refresh_token;
+      if (error) {
+        console.error('[Google Auth] Persistent google_oauth_tokens query failed:', error);
+        // Fail safely on database errors - do NOT silently fall back to stale env tokens
+        throw new Error(`Failed to query persistent Google credentials from database: ${error.message}`);
+      }
+
+      if (data?.refresh_token && typeof data.refresh_token === 'string' && data.refresh_token.trim()) {
+        const token = data.refresh_token.trim();
+        cachedRefreshToken = token;
+        cachedTokenSource = 'database';
+        process.env.GOOGLE_REFRESH_TOKEN = token;
+        return token;
       }
     }
   } catch (dbErr) {
-    console.warn('Failed to query google_oauth_tokens from database:', dbErr);
+    // If DB query or connection failed, do NOT silently fall back to stale env tokens
+    console.error('[Google Auth] Database error querying persistent credentials:', dbErr);
+    throw dbErr instanceof Error
+      ? dbErr
+      : new Error(`Database error querying persistent Google credentials: ${String(dbErr)}`);
+  }
+
+  // 2. Fallback ONLY if DB query succeeded but row was not found (data is null and error is null)
+  if (process.env.NODE_ENV !== 'production') {
+    loadLocalEnvIfNeeded();
+  }
+
+  if (process.env.GOOGLE_REFRESH_TOKEN && process.env.GOOGLE_REFRESH_TOKEN.trim()) {
+    const envToken = process.env.GOOGLE_REFRESH_TOKEN.trim();
+    cachedRefreshToken = envToken;
+    cachedTokenSource = 'environment';
+    return envToken;
   }
 
   return undefined;
@@ -155,6 +192,7 @@ export async function saveStoredRefreshToken(refreshToken: string): Promise<void
 
   const token = refreshToken.trim();
   cachedRefreshToken = token;
+  cachedTokenSource = 'database';
   process.env.GOOGLE_REFRESH_TOKEN = token;
 
   // 1. Persist to local .env.local if running in local environment with write access
@@ -180,15 +218,44 @@ export async function saveStoredRefreshToken(refreshToken: string): Promise<void
   try {
     const supabase = createAdminClient();
     if (supabase) {
-      await supabase.from('google_oauth_tokens').upsert({
+      const { error } = await supabase.from('google_oauth_tokens').upsert({
         id: 'default',
         refresh_token: token,
         updated_at: new Date().toISOString(),
       });
+      if (error) {
+        console.warn('[Google Auth] Database token persistence error:', error);
+      }
     }
   } catch (dbErr) {
     console.warn('Could not persist refresh token to database:', dbErr);
   }
+}
+
+/**
+ * Returns safe diagnostics without exposing tokens or secrets
+ */
+export function getGoogleCredentialDiagnostics(): {
+  credentialSource: 'database' | 'environment' | 'none';
+  tokenExists: boolean;
+  clientIdFingerprint: string;
+  redirectUri: string;
+  hasClientSecret: boolean;
+} {
+  loadLocalEnvIfNeeded();
+  const token = cachedRefreshToken || getStoredRefreshToken();
+  const clientId = process.env.GOOGLE_CLIENT_ID || '';
+  const fingerprint = clientId
+    ? `${clientId.slice(0, 8)}...${clientId.slice(-12)}`
+    : 'missing';
+
+  return {
+    credentialSource: cachedTokenSource,
+    tokenExists: Boolean(token),
+    clientIdFingerprint: fingerprint,
+    redirectUri: process.env.GOOGLE_REDIRECT_URI || 'default',
+    hasClientSecret: Boolean(process.env.GOOGLE_CLIENT_SECRET),
+  };
 }
 
 /**
@@ -306,10 +373,11 @@ export function isGoogleConfigured(): boolean {
 }
 
 /**
- * Ensures Google credentials from environment or persistent DB are loaded
+ * Ensures Google credentials from persistent DB or environment are loaded into memory
+ * @param forceFresh - If true, re-queries Supabase directly bypassing memory cache
  */
-export async function ensureGoogleCredentialsLoaded(): Promise<boolean> {
-  const token = await getStoredRefreshTokenAsync();
+export async function ensureGoogleCredentialsLoaded(forceFresh = false): Promise<boolean> {
+  const token = await getStoredRefreshTokenAsync(forceFresh);
   return Boolean(token);
 }
 
@@ -335,9 +403,12 @@ export function getGoogleAuthClient() {
 
     // Automatically capture and persist token rotation
     oauth2Client.on('tokens', (tokens) => {
-      if (tokens.refresh_token) {
-        saveStoredRefreshToken(tokens.refresh_token).catch(() => {});
+      if (tokens.refresh_token && typeof tokens.refresh_token === 'string' && tokens.refresh_token.trim()) {
+        saveStoredRefreshToken(tokens.refresh_token.trim()).catch((err) => {
+          console.warn('[Google Auth] Failed to persist rotated token:', err);
+        });
       }
+      // If only access_token is returned, existing refresh_token is retained
     });
 
     return oauth2Client;
@@ -354,12 +425,12 @@ export function getGoogleAuthClient() {
   }
 
   throw new Error(
-    'Google API credentials missing. Please configure GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN (or GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY) in .env.local'
+    'Google API credentials missing. Please configure GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN in .env.local or reconnect your Google account.'
   );
 }
 
 /**
- * Returns authenticated Google API service clients
+ * Returns authenticated Google API service clients synchronously
  */
 export function getGoogleServices() {
   const auth = getGoogleAuthClient();
@@ -373,8 +444,46 @@ export function getGoogleServices() {
 
 /**
  * Async version that ensures database-persisted credentials are hydrated before obtaining services
+ * @param forceFresh - If true, re-queries persistent database storage directly
  */
-export async function getGoogleServicesAsync() {
-  await ensureGoogleCredentialsLoaded();
+export async function getGoogleServicesAsync(forceFresh = false) {
+  await ensureGoogleCredentialsLoaded(forceFresh);
   return getGoogleServices();
 }
+
+/**
+ * Executes a Google API operation with automatic OAuth cache invalidation and single-retry:
+ * If operation encounters invalid_grant:
+ * 1. Invalidates cached in-memory token
+ * 2. Reloads persistent token from Supabase
+ * 3. Retries operation exactly ONCE
+ * If persistent token also fails: stops retrying and throws for structured reconnection handling.
+ */
+export async function executeWithGoogleOAuthRetry<T>(
+  operation: (services: {
+    forms: ReturnType<typeof google.forms>;
+    sheets: ReturnType<typeof google.sheets>;
+    drive: ReturnType<typeof google.drive>;
+  }) => Promise<T>
+): Promise<T> {
+  const services = await getGoogleServicesAsync();
+  try {
+    return await operation(services);
+  } catch (err: unknown) {
+    if (isGoogleOAuthError(err)) {
+      console.warn('[Google Auth] OAuth invalid_grant detected. Invalidating cache and re-hydrating from database...');
+      invalidateCachedGoogleToken();
+      // Re-hydrate fresh credential from persistent database storage
+      await ensureGoogleCredentialsLoaded(true);
+      const freshServices = await getGoogleServicesAsync();
+      try {
+        return await operation(freshServices);
+      } catch (retryErr: unknown) {
+        console.error('[Google Auth] Persistent token retry also failed with OAuth error. Stopping retries.', retryErr);
+        throw retryErr; // Caught by formatGoogleErrorMessage to trigger requiresReconnect
+      }
+    }
+    throw err;
+  }
+}
+
