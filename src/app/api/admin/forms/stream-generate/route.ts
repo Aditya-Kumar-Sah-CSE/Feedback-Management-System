@@ -8,6 +8,7 @@ import {
   provisionGoogleFormAndSheetAction,
 } from '@/app/admin/forms/actions';
 import { CreateFormPayload } from '@/lib/validation';
+import { formatGoogleErrorMessage } from '@/lib/google/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,6 +70,8 @@ export async function POST(req: NextRequest) {
     message: string;
     form?: any;
     error?: string;
+    requiresReconnect?: boolean;
+    reconnectUrl?: string;
   }) => {
     try {
       const line = JSON.stringify(event) + '\n';
@@ -127,6 +130,8 @@ export async function POST(req: NextRequest) {
           stepNumber: 4,
           message: provRes.error || 'Google provisioning failed.',
           error: provRes.error || 'Google provisioning failed.',
+          requiresReconnect: (provRes as any).requiresReconnect,
+          reconnectUrl: (provRes as any).reconnectUrl,
         });
         await writer.close();
         return;
@@ -140,12 +145,14 @@ export async function POST(req: NextRequest) {
         form: provRes.form,
       });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const formatted = formatGoogleErrorMessage(err, '/admin/dashboard/forms/create');
       await sendEvent({
         status: 'ERROR',
         stepNumber: 5,
-        message: `Unexpected error: ${msg}`,
-        error: msg,
+        message: formatted.message,
+        error: formatted.message,
+        requiresReconnect: formatted.requiresReconnect,
+        reconnectUrl: formatted.reconnectUrl,
       });
     } finally {
       try {

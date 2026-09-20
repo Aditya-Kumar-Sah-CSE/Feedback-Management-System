@@ -85,6 +85,8 @@ export function CreateGoogleFormWizard({
   const [activeStepNumber, setActiveStepNumber] = useState<number>(1);
   const [creationStepMsg, setCreationStepMsg] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [requiresReconnect, setRequiresReconnect] = useState<boolean>(false);
+  const [reconnectUrl, setReconnectUrl] = useState<string>('/api/auth/google?returnTo=/admin/dashboard/forms/create');
   const [createdForm, setCreatedForm] = useState<FeedbackForm | null>(null);
   const [destinationType, setDestinationType] = useState<string | null>(null);
 
@@ -288,6 +290,7 @@ export function CreateGoogleFormWizard({
 
     setErrorMsg(null);
     setIsGenerating(true);
+    setRequiresReconnect(false);
     setActiveStepNumber(1);
     setCreationStepMsg('Validating academic assignment & session configuration...');
 
@@ -348,6 +351,20 @@ export function CreateGoogleFormWizard({
 
             if (event.status === 'ERROR') {
               setErrorMsg(event.error || 'Failed to generate Google Form.');
+              if (
+                event.requiresReconnect ||
+                (event.error && (
+                  event.error.toLowerCase().includes('invalid_grant') ||
+                  event.error.toLowerCase().includes('reconnect') ||
+                  event.error.toLowerCase().includes('token has been expired') ||
+                  event.error.toLowerCase().includes('unauthorized')
+                ))
+              ) {
+                setRequiresReconnect(true);
+                if (event.reconnectUrl) {
+                  setReconnectUrl(event.reconnectUrl);
+                }
+              }
               setIsGenerating(false);
               return;
             }
@@ -367,6 +384,20 @@ export function CreateGoogleFormWizard({
         setIsGenerating(false);
         if (!result.success) {
           setErrorMsg(result.error || 'Failed to generate Google Form.');
+          if (
+            result.requiresReconnect ||
+            (result.error && (
+              result.error.toLowerCase().includes('invalid_grant') ||
+              result.error.toLowerCase().includes('reconnect') ||
+              result.error.toLowerCase().includes('token has been expired') ||
+              result.error.toLowerCase().includes('unauthorized')
+            ))
+          ) {
+            setRequiresReconnect(true);
+            if (result.reconnectUrl) {
+              setReconnectUrl(result.reconnectUrl);
+            }
+          }
         } else {
           setCreatedForm(result.form as FeedbackForm);
           setDestinationType(result.destinationType || 'APPLICATION_MANAGED');
@@ -1077,13 +1108,36 @@ export function CreateGoogleFormWizard({
                   </div>
                 )}
 
-                {/* Error Alert */}
-                {errorMsg && (
+                {/* Reconnect Required Alert */}
+                {requiresReconnect ? (
+                  <div className="p-4 rounded-2xl bg-amber-50 border-2 border-amber-400 text-amber-950 space-y-3 shadow-xs">
+                    <div className="flex items-start gap-3">
+                      <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <p className="font-bold text-xs text-amber-900">
+                          Google authorization has expired or been revoked. Reconnect your Google account to continue.
+                        </p>
+                        <p className="text-[11px] text-amber-800">
+                          Your server-side OAuth session must be renewed before Google Forms and Sheets can be provisioned.
+                        </p>
+                      </div>
+                    </div>
+                    <div>
+                      <a
+                        href={reconnectUrl}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white rounded-xl text-xs font-bold shadow-xs transition-all hover:scale-[1.02]"
+                      >
+                        <Sparkles className="w-4 h-4 text-amber-200" />
+                        <span>Reconnect Google Account</span>
+                      </a>
+                    </div>
+                  </div>
+                ) : errorMsg ? (
                   <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-900 text-xs flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
                     <span>{errorMsg}</span>
                   </div>
-                )}
+                ) : null}
 
                 {/* Pending Progress indicator */}
                 {isPending && (
@@ -1118,7 +1172,7 @@ export function CreateGoogleFormWizard({
                     <button
                       type="button"
                       onClick={handleGenerateForm}
-                      disabled={!canGoToNext() || isPending || isGenerating || !googleStatus.isConfigured}
+                      disabled={!canGoToNext() || isPending || isGenerating || !googleStatus.isConfigured || requiresReconnect}
                       className={`inline-flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-bce-cobalt to-indigo-600 hover:from-bce-navy hover:to-indigo-700 disabled:opacity-40 transition-all shadow-md ${
                         isPending || isGenerating ? 'btn-request-active opacity-80 cursor-wait' : ''
                       }`}
@@ -1128,7 +1182,13 @@ export function CreateGoogleFormWizard({
                       ) : (
                         <Sparkles className="w-4 h-4 text-amber-300" />
                       )}
-                      <span>{isGenerating || isPending ? 'Generating Form on Google...' : 'Generate Google Feedback Form'}</span>
+                      <span>
+                        {requiresReconnect
+                          ? 'Authorization Required'
+                          : isGenerating || isPending
+                          ? 'Generating Form on Google...'
+                          : 'Generate Google Feedback Form'}
+                      </span>
                     </button>
                   )}
                 </div>

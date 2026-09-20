@@ -10,7 +10,12 @@ async function getAdminDb() {
   return createAdminClient() || await createClient();
 }
 import { FeedbackForm, FeedbackFormStatus } from '@/types/database';
-import { isGoogleConfigured, getGoogleConfigStatus } from '@/lib/google/auth';
+import {
+  isGoogleConfigured,
+  getGoogleConfigStatus,
+  formatGoogleErrorMessage,
+  ensureGoogleCredentialsLoaded,
+} from '@/lib/google/auth';
 import { createGoogleFeedbackForm } from '@/lib/google/forms';
 import { createFeedbackSpreadsheet } from '@/lib/google/sheets';
 import { linkFormToSpreadsheet } from '@/lib/google/linking';
@@ -351,10 +356,13 @@ export async function validateAndPrepareFormDraftAction(payload: CreateFormPaylo
       });
     }
 
+    await ensureGoogleCredentialsLoaded();
     if (!isGoogleConfigured()) {
       return {
         success: false,
-        error: 'Google API credentials are not configured on the server. Please set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN in .env.local.',
+        error: 'Google authorization has expired or is not configured. Reconnect your Google account to continue.',
+        requiresReconnect: true,
+        reconnectUrl: '/api/auth/google?returnTo=/admin/dashboard/forms/create',
       };
     }
 
@@ -507,11 +515,14 @@ export async function validateAndPrepareFormDraftAction(payload: CreateFormPaylo
   }
 
   // Check Google API configuration
+  await ensureGoogleCredentialsLoaded();
   if (!isGoogleConfigured()) {
     return {
       success: false,
       error:
-        'Google API credentials are not configured on the server. Please set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN in .env.local.',
+        'Google authorization has expired or is not configured. Reconnect your Google account to continue.',
+      requiresReconnect: true,
+      reconnectUrl: '/api/auth/google?returnTo=/admin/dashboard/forms/create',
     };
   }
 
@@ -764,9 +775,13 @@ export async function provisionGoogleFormAndSheetAction(params: {
       { error: errMsg }
     );
 
+    const formatted = formatGoogleErrorMessage(err, '/admin/dashboard/forms/create');
+
     return {
       success: false,
-      error: `Google Form generation failed: ${errMsg}`,
+      error: formatted.message,
+      requiresReconnect: formatted.requiresReconnect,
+      reconnectUrl: formatted.reconnectUrl,
     };
   }
 }
