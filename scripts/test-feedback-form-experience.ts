@@ -45,6 +45,8 @@ import {
   FORM_CONFIRMATION_MESSAGE,
   MORE_FEEDBACK_INFO_ITEM,
   MultiFacultyGridItem,
+  RESPONSE_COPY_INSTRUCTION,
+  RESPONSE_COPY_SHORT_REMINDER,
 } from '../src/lib/google/template';
 import { calculateFormAnalytics } from '../src/lib/analytics/engine';
 import { normalizeSheetRows, normalizeRatingValue } from '../src/lib/analytics/normalizer';
@@ -118,6 +120,23 @@ async function runFeedbackFormExperienceTests() {
   }
   if (!FORM_CONFIRMATION_MESSAGE.includes(ADITYA_PORTFOLIO_URL)) {
     throw new Error('Confirmation message missing portfolio URL');
+  }
+
+  console.log('RESPONSE_COPY_INSTRUCTION:', RESPONSE_COPY_INSTRUCTION);
+  if (!RESPONSE_COPY_INSTRUCTION.includes('IMPORTANT: Please check your email after submitting this feedback form and keep the response copy safely.')) {
+    throw new Error('Invalid RESPONSE_COPY_INSTRUCTION constant');
+  }
+
+  console.log('RESPONSE_COPY_SHORT_REMINDER:', RESPONSE_COPY_SHORT_REMINDER);
+  if (!RESPONSE_COPY_SHORT_REMINDER.includes('IMPORTANT: Check your email after submission and keep your response copy.')) {
+    throw new Error('Invalid RESPONSE_COPY_SHORT_REMINDER constant');
+  }
+
+  if (!MORE_FEEDBACK_INFO_ITEM.description.includes(RESPONSE_COPY_SHORT_REMINDER)) {
+    throw new Error('MORE_FEEDBACK_INFO_ITEM missing RESPONSE_COPY_SHORT_REMINDER');
+  }
+  if (!MORE_FEEDBACK_INFO_ITEM.description.includes(CANONICAL_PUBLIC_PORTAL_URL)) {
+    throw new Error('MORE_FEEDBACK_INFO_ITEM missing CANONICAL_PUBLIC_PORTAL_URL');
   }
   console.log('✓ Canonical template constants verified.\n');
 
@@ -217,7 +236,7 @@ async function runFeedbackFormExperienceTests() {
   }
   console.log('  ✓ Assertion 5: General Feedback paragraph question exists and is OPTIONAL.');
 
-  // Validation 6: More Feedback Forms informational item exists with portal URL
+  // Validation 6: More Feedback Forms informational item exists with portal URL and short reminder
   const moreFormsItem = facultyItems.find(it => it.title === 'More Feedback Forms');
   if (!moreFormsItem || !moreFormsItem.textItem) {
     throw new Error('More Feedback Forms informational item not found');
@@ -225,7 +244,16 @@ async function runFeedbackFormExperienceTests() {
   if (!moreFormsItem.description?.includes(CANONICAL_PUBLIC_PORTAL_URL)) {
     throw new Error(`More Feedback Forms description missing portal URL: ${moreFormsItem.description}`);
   }
-  console.log('  ✓ Assertion 6: More Feedback Forms item exists with canonical portal link.');
+  if (!moreFormsItem.description?.includes(RESPONSE_COPY_SHORT_REMINDER)) {
+    throw new Error(`More Feedback Forms description missing short reminder: ${moreFormsItem.description}`);
+  }
+  console.log('  ✓ Assertion 6: More Feedback Forms item exists with canonical portal link and short reminder.');
+
+  // Validation 6b: Response copy instruction in form description on first page
+  if (!facultyForm.info?.description?.includes(RESPONSE_COPY_INSTRUCTION)) {
+    throw new Error(`Faculty form description missing RESPONSE_COPY_INSTRUCTION: ${facultyForm.info?.description}`);
+  }
+  console.log('  ✓ Assertion 6b: Form description on first page contains full response copy instruction.');
 
   // Validation 7: Automated structure validator
   const structValidation = await validateGoogleFormRequiredStructure(facultyFormResult.formId);
@@ -400,12 +428,36 @@ async function runFeedbackFormExperienceTests() {
   }
   console.log('  ✓ Assertion 11: Semester Form General Feedback is OPTIONAL.');
 
-  // Validation 12: More Feedback Forms item
+  // Validation 12: More Feedback Forms item with short reminder
   const semMoreForms = semItems.find(it => it.title === 'More Feedback Forms');
   if (!semMoreForms || !semMoreForms.description?.includes(CANONICAL_PUBLIC_PORTAL_URL)) {
     throw new Error('Semester Form: More Feedback Forms item missing portal URL');
   }
-  console.log('  ✓ Assertion 12: More Feedback Forms item is present with canonical portal link.');
+  if (!semMoreForms.description?.includes(RESPONSE_COPY_SHORT_REMINDER)) {
+    throw new Error(`Semester Form: More Feedback Forms item missing short reminder: ${semMoreForms.description}`);
+  }
+  console.log('  ✓ Assertion 12: More Feedback Forms item is present with canonical portal link and short reminder.');
+
+  // Validation 12b: Semester form header description contains full instruction on first page
+  if (!semesterForm.info?.description?.includes(RESPONSE_COPY_INSTRUCTION)) {
+    throw new Error(`Semester Form: Header description missing full response copy instruction: ${semesterForm.info?.description}`);
+  }
+  console.log('  ✓ Assertion 12b: Semester form description contains full response copy instruction on first page.');
+
+  // Validation 12c: Grids do NOT repeat the response copy instruction
+  grids.forEach((g, gIdx) => {
+    if (g.description?.includes(RESPONSE_COPY_INSTRUCTION)) {
+      throw new Error(`Grid ${gIdx + 1} erroneously duplicates response copy instruction`);
+    }
+  });
+  console.log('  ✓ Assertion 12c: Response copy instruction appears once for semester form, not repeated in faculty grids.');
+
+  // Validation 12d: Automated structure validator on semester form
+  const semStructValidation = await validateGoogleFormRequiredStructure(semesterFormResult.formId);
+  if (!semStructValidation.isValid) {
+    throw new Error(`validateGoogleFormRequiredStructure on semester form failed: ${semStructValidation.errors.join(', ')}`);
+  }
+  console.log('  ✓ Assertion 12d: validateGoogleFormRequiredStructure on semester form passed cleanly.');
 
   // ==========================================================================
   // TEST C: REAL RESPONSE & AUTHORITATIVE SHEET SYNC

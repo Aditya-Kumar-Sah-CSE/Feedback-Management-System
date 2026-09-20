@@ -3,6 +3,9 @@ import {
   buildCreateQuestionsBatchUpdateRequest,
   buildMultiFacultyGridBatchUpdateRequest,
   MultiFacultyGridItem,
+  RESPONSE_COPY_INSTRUCTION,
+  RESPONSE_COPY_SHORT_REMINDER,
+  CANONICAL_PUBLIC_PORTAL_URL,
 } from './template';
 
 export interface CreateFormResult {
@@ -57,10 +60,14 @@ export async function createGoogleFeedbackForm(params: {
       ? buildMultiFacultyGridBatchUpdateRequest(params.items)
       : buildCreateQuestionsBatchUpdateRequest();
 
+  const effectiveDescription = params.description?.includes(RESPONSE_COPY_INSTRUCTION)
+    ? params.description
+    : (params.description ? `${params.description}\n\n${RESPONSE_COPY_INSTRUCTION}` : RESPONSE_COPY_INSTRUCTION);
+
   const updateInfoRequest = {
     updateFormInfo: {
       info: {
-        description: params.description,
+        description: effectiveDescription,
       },
       updateMask: 'description',
     },
@@ -172,6 +179,25 @@ export async function validateGoogleFormRequiredStructure(formId: string): Promi
       }
     });
   });
+
+  // Check response-copy instruction in form description on first page
+  const desc = form.info?.description || '';
+  if (!desc.includes(RESPONSE_COPY_INSTRUCTION)) {
+    errors.push('Form description is missing the required response copy instruction on the first page');
+  }
+
+  // Check More Feedback Forms informational item (immediately before submit/footer)
+  const moreFormsItem = items.find(it => it.title === 'More Feedback Forms');
+  if (!moreFormsItem || !moreFormsItem.textItem) {
+    errors.push('More Feedback Forms informational item is missing');
+  } else {
+    if (!moreFormsItem.description?.includes(RESPONSE_COPY_SHORT_REMINDER)) {
+      errors.push('More Feedback Forms item is missing the short response copy reminder');
+    }
+    if (!moreFormsItem.description?.includes(CANONICAL_PUBLIC_PORTAL_URL)) {
+      errors.push('More Feedback Forms item is missing the canonical portal link');
+    }
+  }
 
   return {
     isValid: errors.length === 0,

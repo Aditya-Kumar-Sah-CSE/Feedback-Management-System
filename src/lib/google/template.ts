@@ -137,9 +137,15 @@ export const ADDITIONAL_FEEDBACK_FIELDS = [
   },
 ] as const;
 
+export const RESPONSE_COPY_INSTRUCTION =
+  'IMPORTANT: Please check your email after submitting this feedback form and keep the response copy safely. The first page of your response is important for your End Semester (End Sem) examination form filling.';
+
+export const RESPONSE_COPY_SHORT_REMINDER =
+  'IMPORTANT: Check your email after submission and keep your response copy. The first page is important for End Sem examination form filling.';
+
 export const MORE_FEEDBACK_INFO_ITEM = {
   title: 'More Feedback Forms',
-  description: `Need to access more academic feedback forms?\nVisit:\nhttps://bce-bgp-feedback-management-system.vercel.app/`,
+  description: `${RESPONSE_COPY_SHORT_REMINDER}\n\nNeed to access more academic feedback forms?\nVisit:\nhttps://bce-bgp-feedback-management-system.vercel.app/`,
 } as const;
 
 export interface FormMetadataInputs {
@@ -165,7 +171,7 @@ export function generateFeedbackFormTitle(meta: FormMetadataInputs): string {
 }
 
 export function generateFeedbackFormDescription(meta: FormMetadataInputs): string {
-  return `Official Student Feedback Form for ${meta.facultyName} teaching ${meta.subjectName} (${meta.semesterName}, ${meta.branchName}, Session ${meta.academicYearName}).\n\nDepartment of Science & Technology, Government of Bihar.\nBhagalpur College of Engineering (BCE Bhagalpur).\n\nNOTE: Please provide your student details accurately. This feedback is collected to improve instructional delivery, lab engagement, and course learning outcomes.\n\nPlease rate objectively on all 8 parameters. Honest feedback is appreciated.`;
+  return `Official Student Feedback Form for ${meta.facultyName} teaching ${meta.subjectName} (${meta.semesterName}, ${meta.branchName}, Session ${meta.academicYearName}).\n\nDepartment of Science & Technology, Government of Bihar.\nBhagalpur College of Engineering (BCE Bhagalpur).\n\n${RESPONSE_COPY_INSTRUCTION}\n\nNOTE: Please provide your student details accurately. This feedback is collected to improve instructional delivery, lab engagement, and course learning outcomes.\n\nPlease rate objectively on all 8 parameters. Honest feedback is appreciated.`;
 }
 
 export function generateSemesterFormTitle(meta: {
@@ -182,7 +188,7 @@ export function generateSemesterFormDescription(meta: {
   academicYearName?: string;
   facultyCount?: number;
 }): string {
-  return `Official Student Feedback Form for ${meta.semesterName} (${meta.branchName}${meta.academicYearName ? `, ${meta.academicYearName}` : ''}).\n\nDepartment of Science & Technology, Government of Bihar.\nBhagalpur College of Engineering (BCE Bhagalpur).\n\nNOTE: Please provide your student details accurately. This feedback form contains evaluations for all subjects and faculty members teaching this semester.\n\nPlease rate each teacher across all 8 parameters objectively. Constructive comments and suggestions are welcome.`;
+  return `Official Student Feedback Form for ${meta.semesterName} (${meta.branchName}${meta.academicYearName ? `, ${meta.academicYearName}` : ''}).\n\nDepartment of Science & Technology, Government of Bihar.\nBhagalpur College of Engineering (BCE Bhagalpur).\n\n${RESPONSE_COPY_INSTRUCTION}\n\nNOTE: Please provide your student details accurately. This feedback form contains evaluations for all subjects and faculty members teaching this semester.\n\nPlease rate each teacher across all 8 parameters objectively. Constructive comments and suggestions are welcome.`;
 }
 
 /**
