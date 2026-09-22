@@ -11,7 +11,16 @@ export async function middleware(request: NextRequest) {
   const firstSegment = segments[0]?.toLowerCase();
 
   // Known non-tenant reserved prefixes
-  const reservedPrefixes = ['admin', 'api', 'auth', 'offline', 'favicon.ico', 'privacy-policy', 'terms-of-service'];
+  const reservedPrefixes = [
+    'admin',
+    'api',
+    'auth',
+    'offline',
+    'favicon.ico',
+    'privacy-policy',
+    'terms-of-service',
+    'google63a0b427ff26a6fc.html',
+  ];
   if (firstSegment && !reservedPrefixes.includes(firstSegment) && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(firstSegment)) {
     requestHeaders.set('x-tenant-slug', firstSegment);
   }
@@ -90,9 +99,9 @@ export const config = {
      * Match all request paths except for:
      * - _next/static (static files)
      * - _next/image (image optimization files)
-     * - favicon.ico, sitemap.xml, robots.txt
-     * - Static asset extensions (.svg, .png, .jpg, .jpeg, .gif, .webp, .ico)
+     * - favicon.ico, sitemap.xml, robots.txt, sw.js, manifest.webmanifest
+     * - Static asset extensions (.svg, .png, .jpg, .jpeg, .gif, .webp, .ico, .html, .txt)
      */
-    '/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|sw.js|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|html|txt)$).*)',
   ],
 };
