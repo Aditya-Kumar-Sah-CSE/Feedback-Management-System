@@ -17,6 +17,7 @@ import {
   Clock,
   AlertCircle,
   Loader2,
+  Building2,
 } from 'lucide-react';
 import type { Admin, AdminRequest } from '@/types/database';
 import { useHydrated, formatDateShort, formatTime } from '@/lib/hooks/use-hydrated';
@@ -205,6 +206,13 @@ export function AdminManagementTab({
                         PENDING
                       </span>
                     </div>
+                    {req.college && (
+                      <div className="flex items-center gap-1.5 text-xs text-amber-800 bg-amber-50/80 px-2.5 py-1 rounded-md border border-amber-200/60">
+                        <Building2 className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <span className="font-medium truncate">{req.college.name}</span>
+                        <span className="text-[10px] text-amber-700 font-mono">({req.college.code})</span>
+                      </div>
+                    )}
                     <div className="text-xs font-mono text-slate-600 break-all">
                       {req.email}
                     </div>
@@ -244,6 +252,7 @@ export function AdminManagementTab({
                 <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-100 uppercase tracking-wider">
                   <tr>
                     <th className="px-5 py-3">Applicant Name</th>
+                    <th className="px-5 py-3">Institution</th>
                     <th className="px-5 py-3">Email Address</th>
                     <th className="px-5 py-3">Request Date</th>
                     <th className="px-5 py-3">Status</th>
@@ -259,6 +268,23 @@ export function AdminManagementTab({
                       <tr key={req.id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="px-5 py-3.5 font-bold text-slate-800">
                           {req.name}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          {req.college ? (
+                            <div className="flex items-center gap-1.5 max-w-[220px]">
+                              <Building2 className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                              <div className="flex flex-col min-w-0">
+                                <span className="font-semibold text-slate-800 truncate" title={req.college.name}>
+                                  {req.college.name}
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-mono">
+                                  {req.college.code}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 italic text-[11px]">—</span>
+                          )}
                         </td>
                         <td className="px-5 py-3.5 font-mono text-slate-600">
                           {req.email}
@@ -383,6 +409,19 @@ export function AdminManagementTab({
                       {admin.email}
                     </div>
 
+                    {admin.role === 'SUPER_ADMIN' ? (
+                      <div className="flex items-center gap-1.5 text-xs text-amber-800 bg-amber-50/80 px-2 py-1 rounded-md border border-amber-200/50">
+                        <Building2 className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                        <span className="font-semibold text-amber-900">All Institutions (Platform Super Admin)</span>
+                      </div>
+                    ) : admin.college ? (
+                      <div className="flex items-center gap-1.5 text-xs text-blue-900 bg-blue-50/80 px-2 py-1 rounded-md border border-blue-200/50">
+                        <Building2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                        <span className="font-semibold text-slate-800 truncate">{admin.college.name}</span>
+                        <span className="text-[10px] text-blue-700 font-mono">({admin.college.code})</span>
+                      </div>
+                    ) : null}
+
                     <div className="flex items-center justify-between gap-2 pt-1">
                       <span className="text-[11px] text-slate-400">
                         Added: {formatDateShort(admin.created_at, hydrated)}
@@ -424,6 +463,7 @@ export function AdminManagementTab({
                 <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-100 uppercase tracking-wider">
                   <tr>
                     <th className="px-5 py-3">Admin Name</th>
+                    <th className="px-5 py-3">Institution</th>
                     <th className="px-5 py-3">Email</th>
                     <th className="px-5 py-3">Role</th>
                     <th className="px-5 py-3">Status</th>
@@ -445,6 +485,27 @@ export function AdminManagementTab({
                             <span className="ml-2 text-[10px] text-bce-cobalt font-semibold bg-blue-50 px-1.5 py-0.5 rounded">
                               (You)
                             </span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          {admin.role === 'SUPER_ADMIN' ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] text-amber-800 font-semibold bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-md">
+                              <Building2 className="w-3 h-3 text-amber-500" /> All Institutions
+                            </span>
+                          ) : admin.college ? (
+                            <div className="flex items-center gap-1.5 max-w-[220px]">
+                              <Building2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                              <div className="flex flex-col min-w-0">
+                                <span className="font-semibold text-slate-800 truncate" title={admin.college.name}>
+                                  {admin.college.name}
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-mono">
+                                  {admin.college.code}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 italic text-[11px]">—</span>
                           )}
                         </td>
                         <td className="px-5 py-3.5 font-mono text-slate-600">
@@ -682,6 +743,13 @@ export function AdminManagementTab({
                     {req.status}
                   </span>
                 </div>
+                {req.college && (
+                  <div className="flex items-center gap-1.5 text-[11px] text-slate-600">
+                    <Building2 className="w-3 h-3 text-amber-500 shrink-0" />
+                    <span className="truncate font-medium">{req.college.name}</span>
+                    <span className="text-[10px] text-slate-400 font-mono">({req.college.code})</span>
+                  </div>
+                )}
                 <div className="font-mono text-slate-500 break-all text-[11px]">
                   {req.email}
                 </div>
@@ -697,6 +765,7 @@ export function AdminManagementTab({
               <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-100">
                 <tr>
                   <th className="px-5 py-2.5">Name</th>
+                  <th className="px-5 py-2.5">Institution</th>
                   <th className="px-5 py-2.5">Email</th>
                   <th className="px-5 py-2.5">Decision</th>
                   <th className="px-5 py-2.5">Reviewed Date</th>
@@ -706,6 +775,21 @@ export function AdminManagementTab({
                 {pastRequests.map((req) => (
                   <tr key={req.id}>
                     <td className="px-5 py-2.5">{req.name}</td>
+                    <td className="px-5 py-2.5">
+                      {req.college ? (
+                        <div className="flex items-center gap-1.5 max-w-[200px]">
+                          <Building2 className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          <span className="font-medium text-slate-800 truncate" title={req.college.name}>
+                            {req.college.name}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono shrink-0">
+                            ({req.college.code})
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 italic text-[11px]">—</span>
+                      )}
+                    </td>
                     <td className="px-5 py-2.5 font-mono">{req.email}</td>
                     <td className="px-5 py-2.5">
                       <span

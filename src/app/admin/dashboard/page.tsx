@@ -87,10 +87,10 @@ export default async function AdminDashboardPage() {
     facultyQuery,
     subjectQuery,
     assignQuery,
-    adminDb.from('college_admin_requests').select('*').order('created_at', { ascending: false }),
+    adminDb.from('college_admin_requests').select('*, colleges(id, name, code, slug)').order('created_at', { ascending: false }),
     (activeCollegeId
-      ? adminDb.from('college_memberships').select('id, user_id, role, status, created_at, college_id').eq('college_id', activeCollegeId).order('created_at', { ascending: false })
-      : adminDb.from('college_memberships').select('id, user_id, role, status, created_at, college_id').order('created_at', { ascending: false })
+      ? adminDb.from('college_memberships').select('id, user_id, role, status, created_at, college_id, colleges(id, name, code, slug)').eq('college_id', activeCollegeId).order('created_at', { ascending: false })
+      : adminDb.from('college_memberships').select('id, user_id, role, status, created_at, college_id, colleges(id, name, code, slug)').order('created_at', { ascending: false })
     ),
     formQuery,
     auditQuery,
@@ -120,6 +120,8 @@ export default async function AdminDashboardPage() {
         return {
           id: m.id,
           user_id: m.user_id,
+          college_id: m.college_id,
+          college: m.colleges || null,
           email: u?.email || 'admin@college.local',
           name: (u?.user_metadata?.name as string) || (u?.email ? u.email.split('@')[0] : 'Administrator'),
           role: m.role as any,
@@ -131,6 +133,8 @@ export default async function AdminDashboardPage() {
       resolvedAdminsList = adminsList.map((m: any) => ({
         id: m.id,
         user_id: m.user_id,
+        college_id: m.college_id,
+        college: m.colleges || null,
         email: 'admin@college.local',
         name: 'Administrator',
         role: m.role as any,
@@ -139,6 +143,20 @@ export default async function AdminDashboardPage() {
       }));
     }
   }
+
+  const resolvedAdminRequests: AdminRequest[] = (adminRequests || []).map((r: any) => ({
+    id: r.id,
+    user_id: r.user_id,
+    college_id: r.college_id,
+    email: r.email,
+    name: r.name,
+    status: r.status,
+    reviewed_by: r.reviewed_by,
+    reviewed_at: r.reviewed_at,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+    college: r.colleges || null,
+  }));
 
   const counts = {
     totalFaculties: totalFacultiesCount ?? (faculties?.length || 0),
@@ -176,7 +194,7 @@ export default async function AdminDashboardPage() {
         faculties={(faculties as Faculty[]) || []}
         subjects={(subjects as Subject[]) || []}
         assignments={(assignments as FacultySubjectAssignment[]) || []}
-        adminRequests={(adminRequests as AdminRequest[]) || []}
+        adminRequests={resolvedAdminRequests}
         adminsList={resolvedAdminsList}
         feedbackForms={(feedbackForms as FeedbackForm[]) || []}
         auditLogs={(auditLogs as AuditLog[]) || []}

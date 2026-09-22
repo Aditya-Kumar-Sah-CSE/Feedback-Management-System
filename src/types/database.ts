@@ -76,17 +76,25 @@ export interface FacultySubjectAssignment {
 export interface Admin {
   id: string;
   user_id?: string | null;
+  college_id?: string | null;
   email: string;
   name: string;
   role: AdminRole;
   status: AdminStatus;
   created_at: string;
   updated_at?: string;
+  college?: {
+    id: string;
+    name: string;
+    code: string;
+    slug: string;
+  } | null;
 }
 
 export interface AdminRequest {
   id: string;
   user_id?: string | null;
+  college_id?: string | null;
   email: string;
   name: string;
   status: AdminRequestStatus;
@@ -94,6 +102,12 @@ export interface AdminRequest {
   reviewed_at?: string | null;
   created_at: string;
   updated_at?: string;
+  college?: {
+    id: string;
+    name: string;
+    code: string;
+    slug: string;
+  } | null;
 }
 
 export interface FeedbackFormItem {
