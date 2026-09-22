@@ -34,15 +34,18 @@ export async function getActiveCollegeGoogleStatusAction() {
 
 /**
  * Disconnects the Google Workspace connection for the specified college.
- * Strictly verifies caller authorization for collegeId before disconnecting.
+ * Strictly verifies caller is a PLATFORM_SUPER_ADMIN before disconnecting.
  */
 export async function disconnectCollegeGoogleAction(collegeId: string) {
   if (!collegeId) {
     return { success: false, error: 'collegeId is required.' };
   }
 
-  // Security Invariant: Verify session and college authorization
-  const session = await requireAdminSession({ requireCollegeId: collegeId });
+  // Security Invariant: Only Platform Super Admins can disconnect Google connections during Testing mode
+  const session = await requireAdminSession({ requireSuperAdmin: true });
+  if (!session.isSuperAdmin) {
+    return { success: false, error: 'Access denied: Only Platform Super Admins can disconnect Google Workspace connections.' };
+  }
 
   const supabase = createAdminClient();
   const prevMeta = await getCollegeGoogleConnectionMetadata(collegeId);

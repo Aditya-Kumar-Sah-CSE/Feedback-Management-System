@@ -240,6 +240,7 @@ export async function requireAdminSession(options?: {
   redirectTo?: string;
   client?: any;
   cookieTenantId?: string;
+  requireSuperAdmin?: boolean;
 }): Promise<AdminSession> {
   const session = await getAdminSession(options?.client, {
     cookieTenantId: options?.cookieTenantId,
@@ -255,6 +256,10 @@ export async function requireAdminSession(options?: {
 
   if (!session.isActive) {
     throw new Error('Unauthorized: Administrator account is inactive or has no institutional memberships.');
+  }
+
+  if (options?.requireSuperAdmin && !session.isPlatformSuperAdmin) {
+    throw new Error('Forbidden: Platform Super Administrator privilege is required.');
   }
 
   if (options?.requireCollegeId) {

@@ -360,15 +360,15 @@ export function AdminDashboardTabs({
             icon: Building2,
             description: 'Campuses & tenant registry',
           },
+          {
+            id: 'google' as AdminTab,
+            label: 'Google Workspace',
+            icon: Globe,
+            badge: googleStatus?.connected ? 'Connected' : undefined,
+            description: 'Forms & Drive integration',
+          },
         ]
       : []),
-    {
-      id: 'google',
-      label: 'Google Workspace',
-      icon: Globe,
-      badge: googleStatus?.connected ? 'Connected' : undefined,
-      description: 'Forms & Drive integration',
-    },
     {
       id: 'settings',
       label: 'Profile & Preferences',
@@ -625,7 +625,7 @@ export function AdminDashboardTabs({
           <InstitutionsManagementTab />
         )}
 
-        {activeTab === 'google' && (
+        {activeTab === 'google' && isSuperAdmin && (
           <div className="space-y-6">
             <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>

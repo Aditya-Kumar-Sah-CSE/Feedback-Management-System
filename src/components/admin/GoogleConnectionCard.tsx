@@ -219,6 +219,23 @@ export function GoogleConnectionCard({
             </p>
           </div>
         )}
+
+        {/* OAuth Test User Guidance Banner for Super Admin */}
+        <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-950/20 p-4 text-amber-200">
+          <div className="flex items-center gap-2 font-bold text-amber-300 text-xs">
+            <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />
+            <span>Google OAuth Test User Guidance (Testing Mode)</span>
+          </div>
+          <p className="mt-1.5 text-xs text-slate-300 leading-relaxed">
+            The Google OAuth app is currently in <strong>TESTING</strong> mode. Google only permits authorizations from accounts explicitly registered in your Google Cloud Console test users list.
+          </p>
+          <div className="mt-2.5 p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 text-xs font-mono text-amber-300">
+            Google Cloud Console &rarr; Google Auth Platform &rarr; Audience &rarr; Test users
+          </div>
+          <p className="mt-2 text-[11px] text-slate-400">
+            Before clicking <strong className="text-white">Connect Google Workspace</strong>, ensure the intended institutional Google account for {collegeName} is manually added to the Test Users list above.
+          </p>
+        </div>
       </div>
     </div>
   );

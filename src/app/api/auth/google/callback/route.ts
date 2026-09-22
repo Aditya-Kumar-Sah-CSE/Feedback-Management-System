@@ -84,6 +84,24 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/admin/login', origin));
   }
 
+  // Security Invariant: Only Platform Super Admins can save Google Workspace connections during Testing mode
+  if (!session.isSuperAdmin) {
+    console.warn('[Google OAuth Callback] Non-super-admin attempted to complete Google OAuth:', {
+      userId: session.userId,
+      email: session.email,
+    });
+    return new NextResponse(
+      `<html>
+        <body style="font-family: sans-serif; padding: 40px; background: #0b192c; color: #fff;">
+          <h2 style="color: #ef4444;">Access Denied (403)</h2>
+          <p style="color: #cbd5e1;">Google Workspace connections can only be configured by Platform Super Administrators.</p>
+          <a href="${fallbackReturnTo}" style="display: inline-block; margin-top: 16px; padding: 10px 18px; background: #3b82f6; color: #fff; text-decoration: none; border-radius: 8px; font-weight: 600;">Return to Dashboard</a>
+        </body>
+      </html>`,
+      { headers: { 'Content-Type': 'text/html' }, status: 403 }
+    );
+  }
+
   // 3. User Identity Check: verify state initiator matches current authenticated user
   if (session.userId !== state.userId) {
     console.error('[Google OAuth Callback] Security Violation: Initiating user does not match callback user.', {
@@ -102,9 +120,9 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // 4. Critical Re-Authorization Check: verify user is STILL authorized for this college
+  // 4. Critical Re-Authorization Check: verify user is Super Admin
   try {
-    await requireAdminSession({ requireCollegeId: state.collegeId });
+    await requireAdminSession({ requireSuperAdmin: true });
   } catch (authErr: any) {
     console.error('[Google OAuth Callback] Re-authorization failed during callback:', {
       userId: session.userId,

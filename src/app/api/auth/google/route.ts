@@ -14,10 +14,28 @@ export async function GET(request: Request) {
   const rawReturnTo = url.searchParams.get('returnTo');
   const returnTo = validateInternalReturnTo(rawReturnTo, '/admin/dashboard');
 
-  // 1. Mandatory Admin Authentication
+  // 1. Mandatory Admin Authentication & Super Admin Authorization
   const session = await getAdminSession();
   if (!session.isAuthenticated || !session.isActive) {
     return NextResponse.redirect(new URL('/admin/login', origin));
+  }
+
+  // Security Invariant: Only Platform Super Admins can manage Google Workspace connections during Testing mode
+  if (!session.isSuperAdmin) {
+    console.warn('[Google OAuth Initiation] Non-super-admin attempted to initiate Google connection:', {
+      userId: session.userId,
+      email: session.email,
+    });
+    return new NextResponse(
+      `<html>
+        <body style="font-family: sans-serif; padding: 40px; background: #0b192c; color: #fff;">
+          <h2 style="color: #ef4444;">Access Denied (403)</h2>
+          <p>Google Workspace connections can only be configured by Platform Super Administrators.</p>
+          <a href="${returnTo}" style="color: #60a5fa;">Return to Dashboard</a>
+        </body>
+      </html>`,
+      { headers: { 'Content-Type': 'text/html' }, status: 403 }
+    );
   }
 
   // 2. Resolve Target College
@@ -38,9 +56,9 @@ export async function GET(request: Request) {
     );
   }
 
-  // 3. Authorize caller for the specific college
+  // 3. Authorize caller - verify target college exists
   try {
-    await requireAdminSession({ requireCollegeId: targetCollegeId });
+    await requireAdminSession({ requireSuperAdmin: true });
   } catch (authErr: any) {
     console.warn('[Google OAuth Initiation] Unauthorized attempt to connect college:', {
       userId: session.userId,

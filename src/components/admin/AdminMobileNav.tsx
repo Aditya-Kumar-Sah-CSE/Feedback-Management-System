@@ -83,9 +83,11 @@ export function AdminMobileNav({
           icon: CreditCard,
         },
         ...(isSuperAdmin
-          ? [{ id: 'institutions' as AdminTab, label: 'Campuses & Colleges', icon: Building2 }]
+          ? [
+              { id: 'institutions' as AdminTab, label: 'Campuses & Colleges', icon: Building2 },
+              { id: 'google' as AdminTab, label: 'Google Workspace', icon: Globe },
+            ]
           : []),
-        { id: 'google', label: 'Google Workspace', icon: Globe },
       ],
     },
     {
