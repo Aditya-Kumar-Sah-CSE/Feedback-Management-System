@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { getAdminSession } from '@/lib/auth/admin-auth';
 import { AdminHeaderSignOut } from '@/components/admin/AdminHeaderSignOut';
-import { TenantSwitcher } from './components/TenantSwitcher';
+import { TenantSwitcher } from '@/components/admin/TenantSwitcher';
 import { School, ShieldCheck, UserCheck, ArrowLeft } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';

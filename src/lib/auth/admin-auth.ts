@@ -279,5 +279,3 @@ export async function requireAdminSession(options?: {
 
   return session;
 }
-
-export { setActiveCollegeAction } from './tenant-actions';

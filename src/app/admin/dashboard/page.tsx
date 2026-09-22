@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getAdminSession } from '@/lib/auth/admin-auth';
 import { canAccessAnalytics } from '@/lib/billing/access-control';
 import { getGoogleConfigStatus } from '@/lib/google/auth';
-import { GoogleConnectionCard } from './components/GoogleConnectionCard';
+import { GoogleConnectionCard } from '@/components/admin/GoogleConnectionCard';
 import { AdminDashboardTabs } from '@/components/admin/AdminDashboardTabs';
 import type {
   AcademicYear,
