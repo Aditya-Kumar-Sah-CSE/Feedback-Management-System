@@ -67,10 +67,19 @@ export default async function HomePage() {
 
       {/* 4. Minimal Platform Footer */}
       <footer className="bg-white border-t border-slate-200 text-xs text-slate-500 py-6 px-4 mt-auto">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
           <div>
             <p className="font-semibold text-slate-700">Feedback Management System</p>
             <p className="text-[11px] text-slate-500">Multi-tenant Institutional Feedback Platform</p>
+          </div>
+          <div className="flex items-center gap-4 text-[11px] text-slate-500">
+            <Link href="/privacy-policy" className="hover:text-slate-900 transition-colors">
+              Privacy Policy
+            </Link>
+            <span className="text-slate-300">•</span>
+            <Link href="/terms-of-service" className="hover:text-slate-900 transition-colors">
+              Terms of Service
+            </Link>
           </div>
           <p className="text-[11px] text-slate-400">
             &copy; {new Date().getFullYear()} Feedback Management System. All rights reserved.

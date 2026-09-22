@@ -17,16 +17,20 @@ import {
   LogOut,
   CreditCard,
   Building2,
+  Settings,
+  Globe,
 } from 'lucide-react';
+import type { AdminTab } from './AdminDashboardTabs';
 
 interface Props {
   adminName: string;
   adminEmail: string;
   isSuperAdmin: boolean;
-  activeTab: 'overview' | 'admins' | 'academic' | 'forms' | 'audit' | 'billing' | 'institutions';
-  onSelectTab: (tab: 'overview' | 'admins' | 'academic' | 'forms' | 'audit' | 'billing' | 'institutions') => void;
+  activeTab: AdminTab;
+  onSelectTab: (tab: AdminTab) => void;
   pendingRequestsCount?: number;
   onSignOut: () => void;
+  activeCollegeName?: string;
 }
 
 export function AdminMobileNav({
@@ -37,27 +41,62 @@ export function AdminMobileNav({
   onSelectTab,
   pendingRequestsCount = 0,
   onSignOut,
+  activeCollegeName,
 }: Props) {
   const [isOpen, setIsOpen] = useState(false);
 
-  const navItems = [
-    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  const sections: {
+    title: string;
+    items: {
+      id: AdminTab;
+      label: string;
+      icon: React.ComponentType<{ className?: string }>;
+      badge?: number | string;
+    }[];
+  }[] = [
     {
-      id: 'admins',
-      label: 'Admin Management',
-      icon: ShieldCheck,
-      badge: pendingRequestsCount > 0 ? pendingRequestsCount : undefined,
+      title: 'Core Workflows',
+      items: [
+        { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+        { id: 'academic', label: 'Academic Structure', icon: GraduationCap },
+        { id: 'forms', label: 'Feedback Forms', icon: FileSpreadsheet },
+      ],
     },
-    { id: 'academic', label: 'Academic Structure', icon: GraduationCap },
-    { id: 'forms', label: 'Feedback Forms', icon: FileSpreadsheet },
-    { id: 'audit', label: 'Audit Trail', icon: Activity },
-    { id: 'billing', label: isSuperAdmin ? 'Billing & Access' : 'Billing & Plan', icon: CreditCard },
-    ...(isSuperAdmin
-      ? [{ id: 'institutions', label: 'Institutions', icon: Building2 }]
-      : []),
+    {
+      title: 'Admin & Audit',
+      items: [
+        {
+          id: 'admins',
+          label: 'Admin Management',
+          icon: ShieldCheck,
+          badge: pendingRequestsCount > 0 ? pendingRequestsCount : undefined,
+        },
+        { id: 'audit', label: 'Audit Trail', icon: Activity },
+      ],
+    },
+    {
+      title: 'Billing & Institution',
+      items: [
+        {
+          id: 'billing',
+          label: isSuperAdmin ? 'Billing & Access' : 'Billing & Plan',
+          icon: CreditCard,
+        },
+        ...(isSuperAdmin
+          ? [{ id: 'institutions' as AdminTab, label: 'Campuses & Colleges', icon: Building2 }]
+          : []),
+        { id: 'google', label: 'Google Workspace', icon: Globe },
+      ],
+    },
+    {
+      title: 'System',
+      items: [
+        { id: 'settings', label: 'Settings & Profile', icon: Settings },
+      ],
+    },
   ];
 
-  const handleTabClick = (tabId: 'overview' | 'admins' | 'academic' | 'forms' | 'audit' | 'billing' | 'institutions') => {
+  const handleTabClick = (tabId: AdminTab) => {
     onSelectTab(tabId);
     setIsOpen(false);
   };
@@ -122,39 +161,49 @@ export function AdminMobileNav({
             )}
           </div>
           <p className="text-[10px] font-mono text-slate-400 truncate">{adminEmail}</p>
+          {activeCollegeName && (
+            <p className="text-[10px] text-amber-300/90 font-medium truncate">
+              {activeCollegeName}
+            </p>
+          )}
         </div>
 
         {/* Primary Navigation Sections */}
-        <nav className="flex-1 p-3 space-y-1.5 overflow-y-auto">
-          <p className="px-3 text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-1">
-            Console Navigation
-          </p>
-
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => handleTabClick(item.id as any)}
-                className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  isActive
-                    ? 'bg-bce-cobalt text-amber-300 shadow-sm border border-amber-400/30'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Icon className="w-4 h-4" />
-                  <span>{item.label}</span>
-                </div>
-                {item.badge !== undefined && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500 text-slate-950">
-                    {item.badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        <nav className="flex-1 p-3 space-y-4 overflow-y-auto">
+          {sections.map((section, sIdx) => (
+            <div key={section.title || sIdx} className="space-y-1">
+              <p className="px-3 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                {section.title}
+              </p>
+              <div className="space-y-1">
+                {section.items.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => handleTabClick(item.id)}
+                      className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        isActive
+                          ? 'bg-bce-cobalt text-amber-300 shadow-sm border border-amber-400/30'
+                          : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Icon className="w-4 h-4" />
+                        <span>{item.label}</span>
+                      </div>
+                      {item.badge !== undefined && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500 text-slate-950">
+                          {item.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
 
           <div className="pt-2 border-t border-slate-800/80 mt-2 space-y-1.5">
             <Link

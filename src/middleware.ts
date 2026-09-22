@@ -11,7 +11,7 @@ export async function middleware(request: NextRequest) {
   const firstSegment = segments[0]?.toLowerCase();
 
   // Known non-tenant reserved prefixes
-  const reservedPrefixes = ['admin', 'api', 'auth', 'offline', 'favicon.ico'];
+  const reservedPrefixes = ['admin', 'api', 'auth', 'offline', 'favicon.ico', 'privacy-policy', 'terms-of-service'];
   if (firstSegment && !reservedPrefixes.includes(firstSegment) && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(firstSegment)) {
     requestHeaders.set('x-tenant-slug', firstSegment);
   }

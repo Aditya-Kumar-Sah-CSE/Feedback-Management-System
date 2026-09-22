@@ -78,6 +78,16 @@ export async function approveAdminRequestAction(requestId: string) {
       return { success: false, error: 'Cannot approve request: user account not found in Auth system.' };
     }
 
+    // Auto-confirm user's email so they can login immediately
+    try {
+      await supabase.auth.admin.updateUserById(targetUserId, {
+        email_confirm: true,
+      });
+    } catch (confirmErr) {
+      console.warn('[APPROVE_EMAIL_CONFIRM_WARNING]', confirmErr);
+      // Non-fatal: proceed with approval even if email confirm fails
+    }
+
     // Upsert into college_memberships
     const { error: memberErr } = await supabase
       .from('college_memberships')

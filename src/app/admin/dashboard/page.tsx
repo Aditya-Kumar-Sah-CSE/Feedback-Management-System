@@ -4,7 +4,6 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getAdminSession } from '@/lib/auth/admin-auth';
 import { canAccessAnalytics } from '@/lib/billing/access-control';
 import { getGoogleConfigStatus } from '@/lib/google/auth';
-import { GoogleConnectionCard } from '@/components/admin/GoogleConnectionCard';
 import { AdminDashboardTabs } from '@/components/admin/AdminDashboardTabs';
 import type {
   AcademicYear,
@@ -111,10 +110,12 @@ export default async function AdminDashboardPage() {
 
   // Resolve admin user profiles from auth.users (strictly replacing legacy admins table)
   let resolvedAdminsList: Admin[] = [];
-  if (adminsList && adminsList.length > 0) {
-    try {
-      const { data: usersData } = await adminDb.auth.admin.listUsers();
-      const userMap = new Map((usersData?.users || []).map((u: any) => [u.id, u]));
+  try {
+    const { data: usersData } = await adminDb.auth.admin.listUsers();
+    const userMap = new Map((usersData?.users || []).map((u: any) => [u.id, u]));
+
+    // 1. Resolve college membership admins
+    if (adminsList && adminsList.length > 0) {
       resolvedAdminsList = adminsList.map((m: any) => {
         const u = userMap.get(m.user_id);
         return {
@@ -129,19 +130,45 @@ export default async function AdminDashboardPage() {
           created_at: m.created_at,
         };
       });
-    } catch {
-      resolvedAdminsList = adminsList.map((m: any) => ({
-        id: m.id,
-        user_id: m.user_id,
-        college_id: m.college_id,
-        college: m.colleges || null,
-        email: 'admin@college.local',
-        name: 'Administrator',
-        role: m.role as any,
-        status: m.status as any,
-        created_at: m.created_at,
-      }));
     }
+
+    // 2. Always inject Platform Super Admins so they appear in every college view
+    const { data: platformAdmins } = await adminDb
+      .from('platform_admins')
+      .select('id, user_id, role, is_active, created_at')
+      .eq('is_active', true);
+
+    if (platformAdmins && platformAdmins.length > 0) {
+      const existingUserIds = new Set(resolvedAdminsList.map((a) => a.user_id));
+      for (const pa of platformAdmins) {
+        if (!existingUserIds.has(pa.user_id)) {
+          const u = userMap.get(pa.user_id);
+          resolvedAdminsList.unshift({
+            id: pa.id,
+            user_id: pa.user_id,
+            college_id: null as any,
+            college: null,
+            email: u?.email || 'admin@platform.local',
+            name: (u?.user_metadata?.name as string) || (u?.email ? u.email.split('@')[0] : 'Platform Admin'),
+            role: 'SUPER_ADMIN' as any,
+            status: 'ACTIVE' as any,
+            created_at: pa.created_at,
+          });
+        }
+      }
+    }
+  } catch {
+    resolvedAdminsList = (adminsList || []).map((m: any) => ({
+      id: m.id,
+      user_id: m.user_id,
+      college_id: m.college_id,
+      college: m.colleges || null,
+      email: 'admin@college.local',
+      name: 'Administrator',
+      role: m.role as any,
+      status: m.status as any,
+      created_at: m.created_at,
+    }));
   }
 
   const resolvedAdminRequests: AdminRequest[] = (adminRequests || []).map((r: any) => ({
@@ -174,19 +201,6 @@ export default async function AdminDashboardPage() {
 
   return (
     <div className="space-y-6">
-      {activeCollegeId && (
-        <GoogleConnectionCard
-          collegeId={activeCollegeId}
-          collegeName={session.activeCollege?.name || 'Your Institution'}
-          status={{
-            connected: Boolean(googleStatus?.configured),
-            status: googleStatus?.status || 'NOT_CONNECTED',
-            accountEmail: googleStatus?.accountEmail,
-            accountName: googleStatus?.accountName,
-            connectedAt: googleStatus?.connectedAt,
-          }}
-        />
-      )}
       <AdminDashboardTabs
         academicYears={(academicYears as AcademicYear[]) || []}
         branches={(branches as Branch[]) || []}
@@ -201,8 +215,23 @@ export default async function AdminDashboardPage() {
         isSuperAdmin={session.isSuperAdmin}
         hasFullAnalytics={hasFullAnalytics}
         currentUserEmail={session.admin?.email || session.user?.email || ''}
+        currentUserName={session.name || session.user?.user_metadata?.name || ''}
         counts={counts}
         adminReqError={adminReqError ? adminReqError.message : null}
+        activeCollegeId={activeCollegeId || undefined}
+        activeCollegeName={session.activeCollege?.name || 'Your Institution'}
+        activeCollegeCode={session.activeCollege?.code || undefined}
+        googleStatus={
+          googleStatus
+            ? {
+                connected: Boolean(googleStatus.configured),
+                status: googleStatus.status || 'NOT_CONNECTED',
+                accountEmail: googleStatus.accountEmail,
+                accountName: googleStatus.accountName,
+                connectedAt: googleStatus.connectedAt,
+              }
+            : null
+        }
       />
     </div>
   );
