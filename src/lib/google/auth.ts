@@ -1,6 +1,5 @@
 import { google } from 'googleapis';
-import fs from 'fs';
-import path from 'path';
+import crypto from 'crypto';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export const GOOGLE_SCOPES = [
@@ -8,25 +7,44 @@ export const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/forms.responses.readonly',
   'https://www.googleapis.com/auth/spreadsheets',
   'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.profile',
 ];
+
+export interface CollegeGoogleConnectionMetadata {
+  collegeId: string;
+  accountEmail: string;
+  accountName: string | null;
+  scopes: string[];
+  isValid: boolean;
+  status: 'CONNECTED' | 'INVALID' | 'NOT_CONNECTED';
+  lastError: string | null;
+  lastVerifiedAt: string | null;
+  connectedBy: string | null;
+  connectedAt: string;
+  updatedAt: string;
+}
 
 export interface GoogleConfigStatus {
   isConfigured: boolean;
-  authType: 'oauth' | 'service_account' | 'none';
-  hasAppsScript: boolean;
-  message: string;
+  configured: boolean;
+  status: 'CONNECTED' | 'INVALID' | 'NOT_CONNECTED';
+  accountEmail: string | null;
+  accountName: string | null;
+  connectedAt: string | null;
+  message?: string;
+  hasAppsScript?: boolean;
+  scopes?: string[];
 }
 
-// In-memory token cache for process lifetime
-let cachedRefreshToken: string | null = null;
-let cachedTokenSource: 'database' | 'environment' | 'none' = 'none';
-
-/**
- * Invalidates the in-memory token cache so the next request re-hydrates from persistent storage
- */
-export function invalidateCachedGoogleToken(): void {
-  cachedRefreshToken = null;
-  cachedTokenSource = 'none';
+interface CollegeGoogleCredentialsInternal {
+  collegeId: string;
+  accountEmail: string;
+  accountName: string | null;
+  refreshToken: string;
+  scopes: string[];
+  isValid: boolean;
+  lastError: string | null;
 }
 
 /**
@@ -69,197 +87,453 @@ export function validateInternalReturnTo(
 }
 
 /**
- * Helper to dynamically read fresh credentials from .env.local in local dev if needed
+ * Resolves the OAuth redirect URI with strict priority:
+ * 1. Explicit GOOGLE_REDIRECT_URI if configured
+ * 2. NEXT_PUBLIC_APP_URL if pointing to production or custom domain
+ * 3. Request origin if available
+ * 4. Local development default (http://localhost:3000/api/auth/google/callback)
  */
-function loadLocalEnvIfNeeded(): void {
-  if (typeof process === 'undefined') return;
-
-  try {
-    const envPath = path.join(process.cwd(), '.env.local');
-    if (fs.existsSync(envPath)) {
-      const content = fs.readFileSync(envPath, 'utf8');
-      for (const line of content.split('\n')) {
-        const trimmed = line.trim();
-        if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
-          const idx = trimmed.indexOf('=');
-          const key = trimmed.slice(0, idx).trim();
-          let val = trimmed.slice(idx + 1).trim();
-          if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-            val = val.slice(1, -1);
-          }
-          if (key && val) {
-            // Keep process.env updated if missing or if reading GOOGLE_REFRESH_TOKEN
-            if (!process.env[key] || key === 'GOOGLE_REFRESH_TOKEN') {
-              process.env[key] = val;
-            }
-          }
-        }
-      }
-    }
-  } catch {
-    // Non-fatal if filesystem is restricted or read-only
+export function getGoogleRedirectUri(origin?: string): string {
+  if (process.env.GOOGLE_REDIRECT_URI && process.env.GOOGLE_REDIRECT_URI.trim()) {
+    return process.env.GOOGLE_REDIRECT_URI.trim();
   }
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (appUrl) {
+    return `${appUrl.replace(/\/$/, '')}/api/auth/google/callback`;
+  }
+
+  if (origin && origin.trim()) {
+    return `${origin.replace(/\/$/, '')}/api/auth/google/callback`;
+  }
+
+  return 'http://localhost:3000/api/auth/google/callback';
+}
+
+// -------------------------------------------------------------
+// OAUTH STATE SIGNING & VERIFICATION (HMAC-SHA256)
+// -------------------------------------------------------------
+
+const OAUTH_STATE_SECRET =
+  process.env.GOOGLE_CLIENT_SECRET ||
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  'fms_secure_state_salt';
+
+export interface OAuthStatePayload {
+  collegeId: string;
+  userId: string;
+  returnTo: string;
+  timestamp: number;
+  nonce: string;
 }
 
 /**
- * Synchronously gets currently cached or available refresh token
+ * Generates a tamper-proof, signed OAuth state containing collegeId, userId, and returnTo.
  */
-export function getStoredRefreshToken(): string | undefined {
-  if (cachedRefreshToken) {
-    return cachedRefreshToken;
-  }
+export function generateOAuthState(payload: {
+  collegeId: string;
+  userId: string;
+  returnTo: string;
+}): string {
+  const nonce = crypto.randomBytes(16).toString('hex');
+  const timestamp = Date.now();
+  const data: OAuthStatePayload = {
+    collegeId: payload.collegeId,
+    userId: payload.userId,
+    returnTo: payload.returnTo,
+    timestamp,
+    nonce,
+  };
 
-  // In local development, check .env.local to avoid stale in-memory variables
-  if (process.env.NODE_ENV !== 'production') {
-    loadLocalEnvIfNeeded();
-  }
+  const serialized = JSON.stringify(data);
+  const signature = crypto
+    .createHmac('sha256', OAUTH_STATE_SECRET)
+    .update(serialized)
+    .digest('hex');
 
-  return process.env.GOOGLE_REFRESH_TOKEN || undefined;
+  return Buffer.from(JSON.stringify({ data: serialized, sig: signature })).toString('base64url');
 }
 
 /**
- * Async resolution of refresh token with STRICT PRODUCTION PRIORITY:
- * 1. Supabase google_oauth_tokens table is the primary persistent credential source.
- * 2. If DB contains a valid token: always use DB token.
- * 3. If DB query fails: DO NOT silently fall back to potentially stale env token; fail safely with an error.
- * 4. If DB has no credential row: environment token may be used only as a fallback.
- *
- * @param forceFresh - If true, bypasses the in-memory cache and re-queries Supabase.
+ * Verifies OAuth state signature, integrity, and 15-minute maximum lifetime.
+ * Returns decoded payload if valid; null if tampered, expired, or malformed.
  */
-export async function getStoredRefreshTokenAsync(forceFresh = false): Promise<string | undefined> {
-  if (!forceFresh && cachedRefreshToken) {
-    return cachedRefreshToken;
-  }
+export function verifyOAuthState(stateRaw: string | null): OAuthStatePayload | null {
+  if (!stateRaw || typeof stateRaw !== 'string') return null;
 
-  // 1. Supabase google_oauth_tokens is the PRIMARY credential source
   try {
-    const supabase = createAdminClient();
-    if (!supabase) {
-      if (process.env.NODE_ENV === 'production') {
-        throw new Error('Database client configuration missing: Unable to query persistent Google credentials.');
-      }
-    } else {
-      const { data, error } = await supabase
-        .from('google_oauth_tokens')
-        .select('refresh_token')
-        .eq('id', 'default')
-        .maybeSingle();
+    const parsed = JSON.parse(Buffer.from(stateRaw, 'base64url').toString('utf8'));
+    if (!parsed || !parsed.data || !parsed.sig) return null;
 
-      if (error) {
-        console.error('[Google Auth] Persistent google_oauth_tokens query failed:', error);
-        // Fail safely on database errors - do NOT silently fall back to stale env tokens
-        throw new Error(`Failed to query persistent Google credentials from database: ${error.message}`);
-      }
+    const expectedSig = crypto
+      .createHmac('sha256', OAUTH_STATE_SECRET)
+      .update(parsed.data)
+      .digest('hex');
 
-      if (data?.refresh_token && typeof data.refresh_token === 'string' && data.refresh_token.trim()) {
-        const token = data.refresh_token.trim();
-        cachedRefreshToken = token;
-        cachedTokenSource = 'database';
-        process.env.GOOGLE_REFRESH_TOKEN = token;
-        return token;
-      }
+    // Timing-safe comparison to prevent timing attacks
+    const sigBuffer = Buffer.from(parsed.sig, 'hex');
+    const expectedBuffer = Buffer.from(expectedSig, 'hex');
+    if (sigBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(sigBuffer, expectedBuffer)) {
+      console.warn('[OAuth State] Invalid HMAC signature on OAuth state.');
+      return null;
     }
-  } catch (dbErr) {
-    // If DB query or connection failed, do NOT silently fall back to stale env tokens
-    console.error('[Google Auth] Database error querying persistent credentials:', dbErr);
-    throw dbErr instanceof Error
-      ? dbErr
-      : new Error(`Database error querying persistent Google credentials: ${String(dbErr)}`);
-  }
 
-  // 2. Fallback ONLY if DB query succeeded but row was not found (data is null and error is null)
-  if (process.env.NODE_ENV !== 'production') {
-    loadLocalEnvIfNeeded();
-  }
+    const payload: OAuthStatePayload = JSON.parse(parsed.data);
 
-  if (process.env.GOOGLE_REFRESH_TOKEN && process.env.GOOGLE_REFRESH_TOKEN.trim()) {
-    const envToken = process.env.GOOGLE_REFRESH_TOKEN.trim();
-    cachedRefreshToken = envToken;
-    cachedTokenSource = 'environment';
-    return envToken;
-  }
-
-  return undefined;
-}
-
-/**
- * Securely persists updated refresh token to both database and local environment
- */
-export async function saveStoredRefreshToken(refreshToken: string): Promise<void> {
-  if (!refreshToken || typeof refreshToken !== 'string' || !refreshToken.trim()) {
-    return; // Never overwrite with null/empty
-  }
-
-  const token = refreshToken.trim();
-  cachedRefreshToken = token;
-  cachedTokenSource = 'database';
-  process.env.GOOGLE_REFRESH_TOKEN = token;
-
-  // 1. Persist to local .env.local if running in local environment with write access
-  try {
-    const envPath = path.join(process.cwd(), '.env.local');
-    if (fs.existsSync(envPath)) {
-      let envContent = fs.readFileSync(envPath, 'utf8');
-      if (envContent.includes('GOOGLE_REFRESH_TOKEN=')) {
-        envContent = envContent.replace(
-          /GOOGLE_REFRESH_TOKEN=.*/g,
-          `GOOGLE_REFRESH_TOKEN=${token}`
-        );
-      } else {
-        envContent += `\nGOOGLE_REFRESH_TOKEN=${token}\n`;
-      }
-      fs.writeFileSync(envPath, envContent, 'utf8');
+    // Validate 15 minute timestamp expiry (plus 60s clock skew tolerance)
+    const MAX_AGE_MS = 15 * 60 * 1000;
+    const now = Date.now();
+    if (now - payload.timestamp > MAX_AGE_MS || payload.timestamp > now + 60000) {
+      console.warn('[OAuth State] OAuth state has expired.');
+      return null;
     }
-  } catch {
-    // Expected on serverless/read-only environments like Vercel
-  }
 
-  // 2. Persist to Supabase google_oauth_tokens table (production-safe persistent store)
-  try {
-    const supabase = createAdminClient();
-    if (supabase) {
-      const { error } = await supabase.from('google_oauth_tokens').upsert({
-        id: 'default',
-        refresh_token: token,
-        updated_at: new Date().toISOString(),
-      });
-      if (error) {
-        console.warn('[Google Auth] Database token persistence error:', error);
-      }
-    }
-  } catch (dbErr) {
-    console.warn('Could not persist refresh token to database:', dbErr);
+    return payload;
+  } catch (err) {
+    console.warn('[OAuth State] Failed to parse or verify OAuth state:', err);
+    return null;
   }
 }
 
+// -------------------------------------------------------------
+// INTERNAL TENANT CREDENTIAL ACCESS (SERVICE-ROLE ONLY)
+// -------------------------------------------------------------
+
 /**
- * Returns safe diagnostics without exposing tokens or secrets
+ * Internal server-only helper to fetch raw refresh token for a college.
+ * NEVER return this to client components, API responses, or UI.
  */
-export function getGoogleCredentialDiagnostics(): {
-  credentialSource: 'database' | 'environment' | 'none';
-  tokenExists: boolean;
-  clientIdFingerprint: string;
-  redirectUri: string;
-  hasClientSecret: boolean;
-} {
-  loadLocalEnvIfNeeded();
-  const token = cachedRefreshToken || getStoredRefreshToken();
-  const clientId = process.env.GOOGLE_CLIENT_ID || '';
-  const fingerprint = clientId
-    ? `${clientId.slice(0, 8)}...${clientId.slice(-12)}`
-    : 'missing';
+async function getCollegeGoogleCredentials(
+  collegeId: string
+): Promise<CollegeGoogleCredentialsInternal | null> {
+  if (!collegeId) return null;
+
+  const supabase = createAdminClient();
+  if (!supabase) {
+    throw new Error('Supabase admin client unavailable for Google credential lookup.');
+  }
+
+  const { data, error } = await supabase
+    .from('college_google_connections')
+    .select('college_id, account_email, account_name, refresh_token, scopes, is_valid, last_error')
+    .eq('college_id', collegeId)
+    .maybeSingle();
+
+  if (error) {
+    console.error(`[Google Auth] Database query failed for college [${collegeId}]:`, error);
+    throw new Error(`Failed to retrieve Google credentials: ${error.message}`);
+  }
+
+  if (!data) return null;
 
   return {
-    credentialSource: cachedTokenSource,
-    tokenExists: Boolean(token),
-    clientIdFingerprint: fingerprint,
-    redirectUri: process.env.GOOGLE_REDIRECT_URI || 'default',
-    hasClientSecret: Boolean(process.env.GOOGLE_CLIENT_SECRET),
+    collegeId: data.college_id,
+    accountEmail: data.account_email,
+    accountName: data.account_name,
+    refreshToken: data.refresh_token,
+    scopes: data.scopes || [],
+    isValid: data.is_valid,
+    lastError: data.last_error,
   };
 }
 
 /**
- * Returns true if error indicates expired/revoked/invalid OAuth grant or credentials
+ * Marks a college's Google connection as invalid in the database (e.g. on invalid_grant).
+ * Strictly scopes the invalidation to that single college.
+ */
+export async function markCollegeGoogleConnectionInvalid(
+  collegeId: string,
+  errorReason: string
+): Promise<void> {
+  const supabase = createAdminClient();
+  if (!supabase) return;
+
+  await supabase
+    .from('college_google_connections')
+    .update({
+      is_valid: false,
+      last_error: errorReason,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('college_id', collegeId);
+}
+
+// -------------------------------------------------------------
+// PUBLIC SAFE TENANT METADATA API
+// -------------------------------------------------------------
+
+/**
+ * Returns safe connection metadata for a college (NEVER includes refresh_token).
+ */
+export async function getCollegeGoogleConnectionMetadata(
+  collegeId: string
+): Promise<CollegeGoogleConnectionMetadata | null> {
+  if (!collegeId) return null;
+
+  const supabase = createAdminClient();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from('college_google_connections')
+    .select(
+      'college_id, account_email, account_name, scopes, is_valid, last_error, last_verified_at, connected_by, connected_at, updated_at'
+    )
+    .eq('college_id', collegeId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+
+  return {
+    collegeId: data.college_id,
+    accountEmail: data.account_email,
+    accountName: data.account_name,
+    scopes: data.scopes || [],
+    isValid: data.is_valid,
+    status: data.is_valid ? 'CONNECTED' : 'INVALID',
+    lastError: data.last_error,
+    lastVerifiedAt: data.last_verified_at,
+    connectedBy: data.connected_by,
+    connectedAt: data.connected_at,
+    updatedAt: data.updated_at,
+  };
+}
+
+/**
+ * Checks if a specific college has an active, valid Google connection.
+ */
+export async function isCollegeGoogleConfigured(collegeId: string): Promise<boolean> {
+  if (!collegeId) return false;
+  const meta = await getCollegeGoogleConnectionMetadata(collegeId);
+  return Boolean(meta && meta.isValid);
+}
+
+/**
+ * Retrieves safe Google configuration status for an institution or runtime environment.
+ */
+export async function getGoogleConfigStatus(collegeId?: string): Promise<GoogleConfigStatus> {
+  const hasAppsScript = Boolean(process.env.GOOGLE_APPS_SCRIPT_URL);
+  if (!collegeId) {
+    return {
+      isConfigured: false,
+      configured: false,
+      status: 'NOT_CONNECTED',
+      accountEmail: null,
+      accountName: null,
+      connectedAt: null,
+      message: 'No institution selected or Google Workspace not connected.',
+      hasAppsScript,
+      scopes: [],
+    };
+  }
+  const meta = await getCollegeGoogleConnectionMetadata(collegeId);
+  const isConfigured = Boolean(meta && meta.isValid);
+  return {
+    isConfigured,
+    configured: isConfigured,
+    status: meta ? (meta.isValid ? 'CONNECTED' : 'INVALID') : 'NOT_CONNECTED',
+    accountEmail: meta?.accountEmail || null,
+    accountName: meta?.accountName || null,
+    connectedAt: meta?.connectedAt || null,
+    message: isConfigured
+      ? `Connected as ${meta?.accountEmail}`
+      : 'Google account is not connected for this college.',
+    hasAppsScript,
+    scopes: meta?.scopes || [],
+  };
+}
+
+/**
+ * Compatibility wrapper to access Google services for a specified college.
+ */
+export async function getGoogleServices(collegeId?: string) {
+  if (!collegeId) {
+    throw new Error('collegeId is required to access Google services.');
+  }
+  return getCollegeGoogleServices(collegeId);
+}
+
+/**
+ * Compatibility helper for existing call sites checking if Google is configured.
+ * Requires explicit collegeId in Phase 3.
+ */
+export function isGoogleConfigured(): boolean {
+  // Runtime code must not assume a global singleton token.
+  // Returns true if server credentials (client id & secret) exist.
+  return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+}
+
+// -------------------------------------------------------------
+// TENANT-SCOPED GOOGLE CLIENT & SERVICES FACTORY
+// -------------------------------------------------------------
+
+/**
+ * Constructs an authenticated OAuth2Client bound to the specified college's refresh token.
+ * Throws GOOGLE_CONNECTION_REQUIRED if no valid connection exists for that college.
+ */
+export async function getCollegeGoogleAuthClient(collegeId: string) {
+  if (!collegeId || typeof collegeId !== 'string') {
+    const err: any = new Error('Tenant resolution error: collegeId is required for Google operations.');
+    err.code = 'TENANT_REQUIRED';
+    throw err;
+  }
+
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    throw new Error('Google OAuth client ID or client secret is not configured on the server.');
+  }
+
+  const creds = await getCollegeGoogleCredentials(collegeId);
+  if (!creds || !creds.refreshToken || !creds.isValid) {
+    const err: any = new Error(`Google Workspace account is not connected for this college.`);
+    err.code = 'GOOGLE_CONNECTION_REQUIRED';
+    err.collegeId = collegeId;
+    throw err;
+  }
+
+  const redirectUri = getGoogleRedirectUri();
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    redirectUri
+  );
+
+  oauth2Client.setCredentials({
+    refresh_token: creds.refreshToken,
+  });
+
+  return oauth2Client;
+}
+
+/**
+ * Returns authenticated Google API service clients scoped to a specific college.
+ */
+export async function getCollegeGoogleServices(collegeId: string) {
+  const auth = await getCollegeGoogleAuthClient(collegeId);
+  return {
+    forms: google.forms({ version: 'v1', auth }),
+    sheets: google.sheets({ version: 'v4', auth }),
+    drive: google.drive({ version: 'v3', auth }),
+  };
+}
+
+/**
+ * Executes a Google API operation with automatic error trapping for the specified college.
+ * If invalid_grant is returned, marks that college's connection as invalid and fails closed.
+ */
+export async function executeWithCollegeGoogleOAuthRetry<T>(
+  collegeId: string,
+  operation: (services: {
+    forms: ReturnType<typeof google.forms>;
+    sheets: ReturnType<typeof google.sheets>;
+    drive: ReturnType<typeof google.drive>;
+  }) => Promise<T>
+): Promise<T> {
+  const services = await getCollegeGoogleServices(collegeId);
+  try {
+    return await operation(services);
+  } catch (err: unknown) {
+    if (isGoogleOAuthError(err)) {
+      console.warn(
+        `[Google Auth] OAuth invalid_grant detected for college [${collegeId}]. Marking connection invalid in database...`
+      );
+      await markCollegeGoogleConnectionInvalid(
+        collegeId,
+        err instanceof Error ? err.message : 'OAuth authorization expired or revoked'
+      );
+      const connErr: any = new Error(
+        `Google authorization has expired or was revoked for this institution. Reconnection required.`
+      );
+      connErr.code = 'GOOGLE_CONNECTION_REQUIRED';
+      connErr.collegeId = collegeId;
+      throw connErr;
+    }
+    throw err;
+  }
+}
+
+// -------------------------------------------------------------
+// PERSISTENCE & LIFECYCLE
+// -------------------------------------------------------------
+
+/**
+ * Securely persists or updates a validated Google connection for a college.
+ * Conceptual uniqueness: exactly one active Google connection per college.
+ */
+export async function saveCollegeGoogleConnection(params: {
+  collegeId: string;
+  accountEmail: string;
+  accountName?: string | null;
+  refreshToken: string;
+  scopes?: string[];
+  connectedBy?: string | null;
+}): Promise<void> {
+  if (!params.collegeId || !params.refreshToken) {
+    throw new Error('collegeId and refreshToken are required to save Google connection.');
+  }
+
+  const supabase = createAdminClient();
+  if (!supabase) {
+    throw new Error('Supabase admin client unavailable for Google connection persistence.');
+  }
+
+  const nowIso = new Date().toISOString();
+  const { error } = await supabase.from('college_google_connections').upsert(
+    {
+      college_id: params.collegeId,
+      account_email: params.accountEmail.trim().toLowerCase(),
+      account_name: params.accountName || null,
+      refresh_token: params.refreshToken.trim(),
+      scopes: params.scopes || GOOGLE_SCOPES,
+      is_valid: true,
+      last_error: null,
+      last_verified_at: nowIso,
+      connected_by: params.connectedBy || null,
+      updated_at: nowIso,
+    },
+    { onConflict: 'college_id' }
+  );
+
+  if (error) {
+    console.error('[Google Auth] Failed to save college Google connection:', error);
+    throw new Error(`Failed to save Google connection: ${error.message}`);
+  }
+}
+
+/**
+ * Disconnects and removes a college's Google connection.
+ * Attempts token revocation on Google servers before deleting local record.
+ */
+export async function disconnectCollegeGoogleConnection(collegeId: string): Promise<void> {
+  if (!collegeId) return;
+
+  const creds = await getCollegeGoogleCredentials(collegeId);
+  if (creds?.refreshToken) {
+    try {
+      const oauth2Client = new google.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        getGoogleRedirectUri()
+      );
+      await oauth2Client.revokeToken(creds.refreshToken);
+    } catch (revokeErr) {
+      console.warn(
+        '[Google Auth] Token revocation on Google servers failed (token may already be invalid):',
+        revokeErr
+      );
+    }
+  }
+
+  const supabase = createAdminClient();
+  if (supabase) {
+    await supabase.from('college_google_connections').delete().eq('college_id', collegeId);
+  }
+}
+
+// -------------------------------------------------------------
+// ERROR CLASSIFICATION & FORMATTING
+// -------------------------------------------------------------
+
+/**
+ * Returns true if error indicates expired/revoked/invalid OAuth grant or credentials.
  */
 export function isGoogleOAuthError(err: unknown): boolean {
   if (!err) return false;
@@ -293,10 +567,11 @@ export function isGoogleOAuthError(err: unknown): boolean {
 }
 
 /**
- * Formats Google API errors into structured user-facing messages and reconnect data
+ * Formats Google API errors into structured user-facing messages and reconnect data.
  */
 export function formatGoogleErrorMessage(
   err: unknown,
+  collegeId?: string,
   returnTo: string = '/admin/dashboard/forms/create'
 ): {
   message: string;
@@ -304,12 +579,19 @@ export function formatGoogleErrorMessage(
   reconnectUrl: string;
 } {
   const safeReturnTo = validateInternalReturnTo(returnTo);
-  const reconnectUrl = `/api/auth/google?returnTo=${encodeURIComponent(safeReturnTo)}`;
+  const queryParams = new URLSearchParams({ returnTo: safeReturnTo });
+  if (collegeId) {
+    queryParams.set('collegeId', collegeId);
+  }
+  const reconnectUrl = `/api/auth/google?${queryParams.toString()}`;
 
-  if (isGoogleOAuthError(err)) {
+  const anyErr = err as any;
+  if (anyErr?.code === 'GOOGLE_CONNECTION_REQUIRED' || isGoogleOAuthError(err)) {
     return {
       message:
-        'Google authorization has expired or been revoked. Reconnect your Google account to continue.',
+        err instanceof Error
+          ? err.message
+          : 'Google Workspace account is not connected or authorization expired. Connect your Google account to continue.',
       requiresReconnect: true,
       reconnectUrl,
     };
@@ -324,166 +606,17 @@ export function formatGoogleErrorMessage(
 }
 
 /**
- * Returns configuration status without exposing credentials
+ * Backward-compatibility helper for any legacy callers that cannot supply collegeId immediately.
+ * In Phase 3, this always enforces explicit tenant resolution.
  */
-export function getGoogleConfigStatus(): GoogleConfigStatus {
-  const refreshToken = getStoredRefreshToken();
-  const hasOAuth = Boolean(
-    process.env.GOOGLE_CLIENT_ID &&
-    process.env.GOOGLE_CLIENT_SECRET &&
-    refreshToken
-  );
-
-  const hasServiceAccount = Boolean(
-    process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL &&
-    process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
-  );
-
-  const hasAppsScript = Boolean(process.env.GOOGLE_APPS_SCRIPT_URL);
-
-  if (hasOAuth) {
-    return {
-      isConfigured: true,
-      authType: 'oauth',
-      hasAppsScript,
-      message: 'Google OAuth 2.0 configured with Refresh Token',
-    };
-  }
-
-  if (hasServiceAccount) {
-    return {
-      isConfigured: true,
-      authType: 'service_account',
-      hasAppsScript,
-      message: 'Google Service Account configured',
-    };
-  }
-
-  return {
-    isConfigured: false,
-    authType: 'none',
-    hasAppsScript,
-    message: 'Google API credentials not configured in environment variables',
-  };
-}
-
-export function isGoogleConfigured(): boolean {
-  const status = getGoogleConfigStatus();
-  return status.isConfigured;
-}
-
-/**
- * Ensures Google credentials from persistent DB or environment are loaded into memory
- * @param forceFresh - If true, re-queries Supabase directly bypassing memory cache
- */
-export async function ensureGoogleCredentialsLoaded(forceFresh = false): Promise<boolean> {
-  const token = await getStoredRefreshTokenAsync(forceFresh);
-  return Boolean(token);
-}
-
-/**
- * Creates authenticated Google Client server-side
- */
-export function getGoogleAuthClient() {
-  const status = getGoogleConfigStatus();
-
-  if (status.authType === 'oauth') {
-    const refreshToken = getStoredRefreshToken();
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/api/auth/google/callback'
-    );
-
-    if (refreshToken) {
-      oauth2Client.setCredentials({
-        refresh_token: refreshToken,
-      });
+export async function ensureGoogleCredentialsLoaded(collegeId?: string): Promise<void> {
+  if (collegeId) {
+    const configured = await isCollegeGoogleConfigured(collegeId);
+    if (!configured) {
+      const err: any = new Error(`Google account is not connected for college [${collegeId}].`);
+      err.code = 'GOOGLE_CONNECTION_REQUIRED';
+      err.collegeId = collegeId;
+      throw err;
     }
-
-    // Automatically capture and persist token rotation
-    oauth2Client.on('tokens', (tokens) => {
-      if (tokens.refresh_token && typeof tokens.refresh_token === 'string' && tokens.refresh_token.trim()) {
-        saveStoredRefreshToken(tokens.refresh_token.trim()).catch((err) => {
-          console.warn('[Google Auth] Failed to persist rotated token:', err);
-        });
-      }
-      // If only access_token is returned, existing refresh_token is retained
-    });
-
-    return oauth2Client;
-  }
-
-  if (status.authType === 'service_account') {
-    const privateKey = (process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || '').replace(/\\n/g, '\n');
-
-    return new google.auth.JWT({
-      email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-      key: privateKey,
-      scopes: GOOGLE_SCOPES,
-    });
-  }
-
-  throw new Error(
-    'Google API credentials missing. Please configure GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN in .env.local or reconnect your Google account.'
-  );
-}
-
-/**
- * Returns authenticated Google API service clients synchronously
- */
-export function getGoogleServices() {
-  const auth = getGoogleAuthClient();
-
-  return {
-    forms: google.forms({ version: 'v1', auth }),
-    sheets: google.sheets({ version: 'v4', auth }),
-    drive: google.drive({ version: 'v3', auth }),
-  };
-}
-
-/**
- * Async version that ensures database-persisted credentials are hydrated before obtaining services
- * @param forceFresh - If true, re-queries persistent database storage directly
- */
-export async function getGoogleServicesAsync(forceFresh = false) {
-  await ensureGoogleCredentialsLoaded(forceFresh);
-  return getGoogleServices();
-}
-
-/**
- * Executes a Google API operation with automatic OAuth cache invalidation and single-retry:
- * If operation encounters invalid_grant:
- * 1. Invalidates cached in-memory token
- * 2. Reloads persistent token from Supabase
- * 3. Retries operation exactly ONCE
- * If persistent token also fails: stops retrying and throws for structured reconnection handling.
- */
-export async function executeWithGoogleOAuthRetry<T>(
-  operation: (services: {
-    forms: ReturnType<typeof google.forms>;
-    sheets: ReturnType<typeof google.sheets>;
-    drive: ReturnType<typeof google.drive>;
-  }) => Promise<T>
-): Promise<T> {
-  const services = await getGoogleServicesAsync();
-  try {
-    return await operation(services);
-  } catch (err: unknown) {
-    if (isGoogleOAuthError(err)) {
-      console.warn('[Google Auth] OAuth invalid_grant detected. Invalidating cache and re-hydrating from database...');
-      invalidateCachedGoogleToken();
-      // Re-hydrate fresh credential from persistent database storage
-      await ensureGoogleCredentialsLoaded(true);
-      const freshServices = await getGoogleServicesAsync();
-      try {
-        return await operation(freshServices);
-      } catch (retryErr: unknown) {
-        console.error('[Google Auth] Persistent token retry also failed with OAuth error. Stopping retries.', retryErr);
-        throw retryErr; // Caught by formatGoogleErrorMessage to trigger requiresReconnect
-      }
-    }
-    throw err;
   }
 }
-

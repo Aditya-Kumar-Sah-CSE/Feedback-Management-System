@@ -1,5 +1,5 @@
 /**
- * Unified Analytics Engine for BCE Faculty Feedback
+ * Unified Analytics Engine for Faculty Feedback
  * Single Source of Truth for Dashboard, Charts, and PDF Reports.
  */
 

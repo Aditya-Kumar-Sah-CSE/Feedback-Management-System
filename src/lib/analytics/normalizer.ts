@@ -1,5 +1,5 @@
 /**
- * Normalization Layer for BCE Faculty Feedback
+ * Normalization Layer for Faculty Feedback
  * Converts arbitrary Google Sheet rows into canonical 8-parameter feedback records.
  */
 

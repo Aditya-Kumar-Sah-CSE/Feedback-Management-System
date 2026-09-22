@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { fetchSingleResponseFromSheet } from '@/lib/google/sheets';
 import { BCE_FEEDBACK_PARAMETERS } from '@/lib/google/template';
 import { generateStudentResponsePDF, StudentResponsePDFData } from '@/lib/analytics/pdf-generator';
+import { getCollegeBranding } from '@/lib/tenant/branding';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +17,7 @@ export async function GET(req: NextRequest) {
 
   let verifiedFormId: string | null = null;
   let verifiedResponseId: string | null = null;
+  let adminUserId: string | null = null;
 
   // 1. Verify Student Token
   if (token) {
@@ -42,6 +44,7 @@ export async function GET(req: NextRequest) {
         if (adminCheck) {
           verifiedFormId = queryFormId;
           verifiedResponseId = queryResponseId;
+          adminUserId = user.id;
         }
       }
     }
@@ -66,6 +69,7 @@ export async function GET(req: NextRequest) {
     .from('feedback_forms')
     .select(`
       id,
+      college_id,
       title,
       form_type,
       google_sheet_id,
@@ -89,6 +93,28 @@ export async function GET(req: NextRequest) {
     return new NextResponse('Feedback form not found', { status: 404 });
   }
 
+  // Verify admin authorization for this form's college if accessed via admin session
+  if (adminUserId) {
+    const { data: isSuperAdmin } = await supabase.rpc('is_platform_super_admin', {
+      target_user_id: adminUserId,
+    });
+    if (!isSuperAdmin) {
+      const { data: hasMembership } = await supabase
+        .from('college_admins')
+        .select('id')
+        .eq('user_id', adminUserId)
+        .eq('college_id', form.college_id)
+        .eq('status', 'ACTIVE')
+        .maybeSingle();
+
+      if (!hasMembership) {
+        return new NextResponse('Forbidden: You do not have permission to access responses for this institution', {
+          status: 403,
+        });
+      }
+    }
+  }
+
   const sheetId =
     form.google_sheet_id ||
     form.google_sheet_url?.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/)?.[1];
@@ -98,7 +124,7 @@ export async function GET(req: NextRequest) {
   }
 
   // 4. Fetch the authoritative raw response row from Google Sheet
-  const sheetData = await fetchSingleResponseFromSheet(sheetId, verifiedResponseId);
+  const sheetData = await fetchSingleResponseFromSheet(sheetId, verifiedResponseId, form.college_id);
   if (!sheetData) {
     return new NextResponse('Response record not found in authoritative Google Sheet', { status: 404 });
   }
@@ -216,6 +242,7 @@ export async function GET(req: NextRequest) {
 
   // Generate PDF
   try {
+    const branding = await getCollegeBranding(form.college_id);
     const pdfBuffer = await generateStudentResponsePDF({
       studentName,
       registrationNumber,
@@ -228,10 +255,10 @@ export async function GET(req: NextRequest) {
       submissionId: verifiedResponseId,
       facultyEvaluations,
       generalFeedback,
-    });
+    }, branding);
 
     const safeReg = (registrationNumber || 'Student').replace(/[^a-zA-Z0-9_-]/g, '_');
-    const filename = `BCE_Feedback_Response_${safeReg}.pdf`;
+    const filename = `${branding.code}_Feedback_Response_${safeReg}.pdf`;
 
     return new Response(new Uint8Array(pdfBuffer), {
       status: 200,

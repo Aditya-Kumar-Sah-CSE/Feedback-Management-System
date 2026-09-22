@@ -1,316 +1,283 @@
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { createAdminClient } from '@/lib/supabase/admin';
-import type { Admin, AdminRequest } from '@/types/database';
+import type {
+  AdminSession,
+  AdminCollegeMembership,
+  CollegeRole,
+  MembershipStatus,
+} from '@/types/auth';
 
-export const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'iambestadi@gmail.com').toLowerCase().trim();
+export const ACTIVE_TENANT_COOKIE = 'fms_active_tenant_id';
 
-export interface AdminAuthResult {
-  isAuthenticated: boolean;
-  user: { id: string; email?: string; name?: string } | null;
-  admin: Admin | null;
-  isSuperAdmin: boolean;
-  isApproved: boolean;
-  isActive: boolean;
-  isPending: boolean;
-  isRejected: boolean;
-  request?: AdminRequest | null;
-}
+export type AdminAuthResult = AdminSession;
 
 /**
- * Server-side admin verification and Super Admin auto-promotion.
- * Never relies on client-side email checks alone.
+ * Super Admin email configuration used only for bootstrapping/recovery,
+ * NEVER as the canonical authorization identity.
  */
-export async function getAdminSession(client?: any): Promise<AdminAuthResult> {
+export const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'iambestadi@gmail.com')
+  .toLowerCase()
+  .trim();
+
+/**
+ * Resolves the authenticated multi-tenant admin session.
+ * Canonical identity is strictly auth.uid() / user.id.
+ */
+export async function getAdminSession(
+  client?: any,
+  options?: { cookieTenantId?: string }
+): Promise<AdminSession> {
   const supabase = client || (await createClient());
-  const adminDb = createAdminClient() || supabase;
 
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
 
-  if (userError || !user || !user.email) {
+  if (userError || !user) {
     return {
+      userId: '',
+      email: '',
+      name: '',
+      isPlatformSuperAdmin: false,
+      colleges: [],
+      activeCollegeId: null,
+      activeCollege: null,
       isAuthenticated: false,
-      user: null,
-      admin: null,
-      isSuperAdmin: false,
-      isApproved: false,
       isActive: false,
       isPending: false,
       isRejected: false,
+      isSuperAdmin: false,
+      isApproved: false,
+      admin: null,
+      user: null,
     };
   }
 
-  const userEmail = user.email.toLowerCase().trim();
-  const isSuperAdminEmail = userEmail === SUPER_ADMIN_EMAIL;
+  const userId = user.id;
+  const userEmail = (user.email || '').toLowerCase().trim();
+  const userName = user.user_metadata?.name || userEmail.split('@')[0] || 'Administrator';
 
-  // 1. If Super Admin email, ensure record exists with SUPER_ADMIN + ACTIVE privileges
-  if (isSuperAdminEmail) {
-    try {
-      await supabase.rpc('ensure_super_admin', {
-        p_user_id: user.id,
-        p_email: userEmail,
-        p_name: user.user_metadata?.name || 'Aditya (Super Admin)',
-      });
-    } catch {
-      // Ignored if RPC does not exist
-    }
-
-    // Try to fetch existing admin record
-    const { data: existingAdmin } = await adminDb
-      .from('admins')
-      .select('*')
-      .or(`user_id.eq.${user.id},email.eq.${userEmail}`)
-      .maybeSingle();
-
-    if (!existingAdmin || existingAdmin.role !== 'SUPER_ADMIN' || (existingAdmin.status && existingAdmin.status !== 'ACTIVE') || !existingAdmin.user_id) {
-      // Upsert/Promote Super Admin in admins table with schema compatibility
-      const basePayload: Record<string, any> = {
-        user_id: user.id,
-        email: userEmail,
-        name: user.user_metadata?.name || 'Aditya (Super Admin)',
-        role: 'SUPER_ADMIN',
-        updated_at: new Date().toISOString(),
-      };
-
-      const { data: initialAdmin, error: upsertErr } = await adminDb
-        .from('admins')
-        .upsert(
-          { ...basePayload, status: 'ACTIVE' },
-          { onConflict: 'email' }
-        )
-        .select('*')
-        .maybeSingle();
-
-      let updatedAdmin = initialAdmin;
-
-      if (upsertErr && (upsertErr.message.includes('status') || upsertErr.code === '42703')) {
-        const { data: fallbackAdmin } = await adminDb
-          .from('admins')
-          .upsert(
-            basePayload,
-            { onConflict: 'email' }
-          )
-          .select('*')
-          .maybeSingle();
-        updatedAdmin = fallbackAdmin;
-      }
-
-      // Ensure any request is marked as APPROVED (omit updated_at if not present in schema)
-      await adminDb
-        .from('admin_requests')
-        .update({
-          status: 'APPROVED',
-          reviewed_at: new Date().toISOString(),
-        })
-        .eq('email', userEmail);
-
-      const rawAdmin = updatedAdmin || existingAdmin;
-      const activeAdmin: Admin = rawAdmin
-        ? {
-            id: rawAdmin.id,
-            user_id: user.id,
-            email: userEmail,
-            name: rawAdmin.name || 'Aditya (Super Admin)',
-            role: 'SUPER_ADMIN',
-            status: 'ACTIVE',
-            created_at: rawAdmin.created_at || new Date().toISOString(),
-            updated_at: rawAdmin.updated_at || new Date().toISOString(),
-          }
-        : {
-            id: user.id,
-            user_id: user.id,
-            email: userEmail,
-            name: user.user_metadata?.name || 'Aditya (Super Admin)',
-            role: 'SUPER_ADMIN',
-            status: 'ACTIVE',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
-
-      return {
-        isAuthenticated: true,
-        user: { id: user.id, email: user.email, name: activeAdmin.name },
-        admin: activeAdmin,
-        isSuperAdmin: true,
-        isApproved: true,
-        isActive: true,
-        isPending: false,
-        isRejected: false,
-      };
-    }
-
-    const activeAdmin: Admin = {
-      id: existingAdmin.id,
-      user_id: user.id,
-      email: user.email,
-      name: existingAdmin.name,
-      role: 'SUPER_ADMIN',
-      status: 'ACTIVE',
-      created_at: existingAdmin.created_at,
-      updated_at: existingAdmin.updated_at,
-    };
-
-    return {
-      isAuthenticated: true,
-      user: { id: user.id, email: user.email, name: existingAdmin.name },
-      admin: activeAdmin,
-      isSuperAdmin: true,
-      isApproved: true,
-      isActive: true,
-      isPending: false,
-      isRejected: false,
-    };
-  }
-
-  // 2. Canonical query by authenticated user ID (auth.uid() / user.id)
-  let { data: adminRecord } = await adminDb
-    .from('admins')
-    .select('*')
-    .eq('user_id', user.id)
+  // 1. Query platform_admins by canonical user.id
+  // Uses authenticated client respecting RLS (public.is_platform_super_admin)
+  const { data: platformAdmin } = await supabase
+    .from('platform_admins')
+    .select('id, user_id, role, is_active')
+    .eq('user_id', userId)
+    .eq('is_active', true)
     .maybeSingle();
 
-  // 3. Controlled self-healing: If not found by canonical user_id, check if an existing
-  // approved admin record exists with this verified email and has a stale/missing user_id.
-  if (!adminRecord) {
-    const { data: legacyAdmin } = await adminDb
-      .from('admins')
-      .select('*')
-      .eq('email', userEmail)
-      .maybeSingle();
+  const isPlatformSuperAdmin = Boolean(platformAdmin);
 
-    if (legacyAdmin) {
-      console.log('[ADMIN_AUTH_SELF_HEAL]', {
-        event: 'SYNC_STALE_ADMIN_USER_ID',
-        email: userEmail,
-        staleUserId: legacyAdmin.user_id,
-        canonicalUserId: user.id,
-      });
+  // 2. Query user's college memberships joined to colleges
+  const { data: rawMemberships } = await supabase
+    .from('college_memberships')
+    .select(`
+      college_id,
+      role,
+      status,
+      colleges (
+        id,
+        name,
+        slug,
+        code,
+        logo_url,
+        is_active
+      )
+    `)
+    .eq('user_id', userId);
 
-      // Update to canonical user.id without creating duplicate rows
-      const { data: healedAdmin, error: healErr } = await adminDb
-        .from('admins')
-        .update({
-          user_id: user.id,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', legacyAdmin.id)
-        .select('*')
-        .single();
+  let authorizedColleges: AdminCollegeMembership[] = [];
 
-      if (!healErr && healedAdmin) {
-        adminRecord = healedAdmin;
-
-        // Also synchronize corresponding admin_requests
-        await adminDb
-          .from('admin_requests')
-          .update({ user_id: user.id })
-          .eq('email', userEmail);
+  if (rawMemberships && Array.isArray(rawMemberships)) {
+    for (const m of rawMemberships) {
+      const col = (m as any).colleges;
+      if (col && col.is_active && m.status === 'ACTIVE') {
+        authorizedColleges.push({
+          collegeId: m.college_id,
+          slug: col.slug,
+          name: col.name,
+          code: col.code,
+          logoUrl: col.logo_url || null,
+          role: m.role as CollegeRole,
+          status: m.status as MembershipStatus,
+        });
       }
     }
   }
 
-  if (adminRecord) {
-    const isSuperAdmin = adminRecord.role === 'SUPER_ADMIN';
-    const isActive = adminRecord.status === 'ACTIVE' || adminRecord.status === undefined;
+  // If Platform Super Admin, fetch all active colleges to enable platform-wide switching
+  if (isPlatformSuperAdmin) {
+    const { data: allActiveColleges } = await supabase
+      .from('colleges')
+      .select('id, name, slug, code, logo_url, is_active')
+      .eq('is_active', true)
+      .order('name', { ascending: true });
 
-    const fullAdmin: Admin = {
-      ...adminRecord,
-      status: adminRecord.status || 'ACTIVE',
-    };
-
-    return {
-      isAuthenticated: true,
-      user: { id: user.id, email: user.email, name: adminRecord.name },
-      admin: fullAdmin,
-      isSuperAdmin,
-      isApproved: true,
-      isActive,
-      isPending: false,
-      isRejected: false,
-    };
+    if (allActiveColleges) {
+      const superAdminColleges: AdminCollegeMembership[] = allActiveColleges.map((c: any) => {
+        const existing = authorizedColleges.find((ac) => ac.collegeId === c.id);
+        return {
+          collegeId: c.id,
+          slug: c.slug,
+          name: c.name,
+          code: c.code,
+          logoUrl: c.logo_url || null,
+          role: existing?.role || 'COLLEGE_ADMIN',
+          status: 'ACTIVE',
+        };
+      });
+      authorizedColleges = superAdminColleges;
+    }
   }
 
-  // 4. Not in admins table: Check admin_requests using canonical user.id first
-  let { data: requestRecord } = await adminDb
-    .from('admin_requests')
-    .select('*')
-    .eq('user_id', user.id)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  // 3. Resolve active college from request cookie
+  let cookieStore: any = null;
+  try {
+    cookieStore = await cookies();
+  } catch {
+    // Outside request context
+  }
 
-  // Controlled self-healing for admin_requests if not matched by canonical user_id
-  if (!requestRecord) {
-    const { data: legacyReq } = await adminDb
-      .from('admin_requests')
-      .select('*')
-      .eq('email', userEmail)
+  const requestedCollegeId = options?.cookieTenantId || cookieStore?.get(ACTIVE_TENANT_COOKIE)?.value || null;
+  let activeCollege: AdminCollegeMembership | null = null;
+
+  if (isPlatformSuperAdmin) {
+    // Platform Super Admin may select any active college
+    if (requestedCollegeId) {
+      activeCollege = authorizedColleges.find((c) => c.collegeId === requestedCollegeId) || null;
+    }
+    // If no valid cookie, choose the first deterministic active college (never hardcoded BCE)
+    if (!activeCollege && authorizedColleges.length > 0) {
+      activeCollege = authorizedColleges[0];
+    }
+  } else {
+    // College Admin may ONLY select an authorized college with status = ACTIVE
+    if (requestedCollegeId) {
+      activeCollege = authorizedColleges.find((c) => c.collegeId === requestedCollegeId) || null;
+    }
+    // If cookie is missing or points to unauthorized college, default to first authorized membership
+    if (!activeCollege && authorizedColleges.length > 0) {
+      activeCollege = authorizedColleges[0];
+    }
+  }
+
+  const activeCollegeId = activeCollege?.collegeId || null;
+  const hasActiveAccess = isPlatformSuperAdmin || authorizedColleges.length > 0;
+
+  // 4. If no active membership or platform role, check college_admin_requests
+  let isPending = false;
+  let isRejected = false;
+
+  if (!hasActiveAccess) {
+    const { data: req } = await supabase
+      .from('college_admin_requests')
+      .select('status')
+      .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    if (legacyReq) {
-      if (legacyReq.user_id !== user.id) {
-        console.log('[ADMIN_AUTH_SELF_HEAL]', {
-          event: 'SYNC_STALE_REQUEST_USER_ID',
-          email: userEmail,
-          staleUserId: legacyReq.user_id,
-          canonicalUserId: user.id,
-        });
+    if (req) {
+      isPending = req.status === 'PENDING';
+      isRejected = req.status === 'REJECTED';
+    } else {
+      // Check by email as secondary check for requests submitted prior to user confirmation
+      const { data: emailReq } = await supabase
+        .from('college_admin_requests')
+        .select('status')
+        .eq('email', userEmail)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-        await adminDb
-          .from('admin_requests')
-          .update({ user_id: user.id })
-          .eq('id', legacyReq.id);
-        legacyReq.user_id = user.id;
+      if (emailReq) {
+        isPending = emailReq.status === 'PENDING';
+        isRejected = emailReq.status === 'REJECTED';
       }
-      requestRecord = legacyReq;
     }
   }
-
-  // If request is APPROVED but admin record was missing, auto-provision with canonical user.id
-  if (requestRecord && requestRecord.status === 'APPROVED') {
-    const { data: provisionedAdmin } = await adminDb
-      .from('admins')
-      .upsert(
-        {
-          user_id: user.id,
-          email: userEmail,
-          name: requestRecord.name || user.user_metadata?.name || 'Administrator',
-          role: 'ADMIN',
-          status: 'ACTIVE',
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'email' }
-      )
-      .select('*')
-      .maybeSingle();
-
-    if (provisionedAdmin) {
-      return {
-        isAuthenticated: true,
-        user: { id: user.id, email: user.email, name: provisionedAdmin.name },
-        admin: { ...provisionedAdmin, status: provisionedAdmin.status || 'ACTIVE' },
-        isSuperAdmin: false,
-        isApproved: true,
-        isActive: true,
-        isPending: false,
-        isRejected: false,
-      };
-    }
-  }
-
-  const isPending = !requestRecord || requestRecord.status === 'PENDING';
-  const isRejected = requestRecord?.status === 'REJECTED';
 
   return {
+    userId,
+    email: userEmail,
+    name: userName,
+    isPlatformSuperAdmin,
+    colleges: authorizedColleges,
+    activeCollegeId,
+    activeCollege,
     isAuthenticated: true,
-    user: { id: user.id, email: user.email, name: requestRecord?.name || user.user_metadata?.name },
-    admin: null,
-    isSuperAdmin: false,
-    isApproved: false,
-    isActive: false,
+    isActive: hasActiveAccess,
     isPending,
     isRejected,
-    request: requestRecord,
+    isSuperAdmin: isPlatformSuperAdmin,
+    isApproved: hasActiveAccess,
+    admin: hasActiveAccess
+      ? {
+          id: userId,
+          user_id: userId,
+          email: userEmail,
+          name: userName,
+          role: isPlatformSuperAdmin ? 'SUPER_ADMIN' : 'ADMIN',
+          status: 'ACTIVE',
+        }
+      : null,
+    user: {
+      id: userId,
+      email: userEmail,
+      user_metadata: user.user_metadata,
+    },
   };
 }
+
+/**
+ * Server-side protection helper for Server Components, Server Actions, and Route Handlers.
+ * Throws or redirects if unauthenticated, pending, or unauthorized for the requested college.
+ */
+export async function requireAdminSession(options?: {
+  requireCollegeId?: string;
+  redirectTo?: string;
+  client?: any;
+  cookieTenantId?: string;
+}): Promise<AdminSession> {
+  const session = await getAdminSession(options?.client, {
+    cookieTenantId: options?.cookieTenantId,
+  });
+
+  if (!session.isAuthenticated) {
+    redirect(options?.redirectTo || '/admin/login');
+  }
+
+  if (session.isPending) {
+    redirect('/admin/pending');
+  }
+
+  if (!session.isActive) {
+    throw new Error('Unauthorized: Administrator account is inactive or has no institutional memberships.');
+  }
+
+  if (options?.requireCollegeId) {
+    const targetId = options.requireCollegeId;
+
+    if (session.isPlatformSuperAdmin) {
+      // Verify requested college exists and is active
+      const collegeExists = session.colleges.some((c) => c.collegeId === targetId);
+      if (!collegeExists) {
+        throw new Error(`Unauthorized: Target college [${targetId}] does not exist or is inactive.`);
+      }
+    } else {
+      // College Admin must have an ACTIVE membership for that exact college
+      const isMember = session.colleges.some(
+        (c) => c.collegeId === targetId && c.status === 'ACTIVE'
+      );
+      if (!isMember) {
+        throw new Error(`Forbidden: You do not possess administrative permissions for college [${targetId}].`);
+      }
+    }
+  }
+
+  return session;
+}
+
+export { setActiveCollegeAction } from './tenant-actions';

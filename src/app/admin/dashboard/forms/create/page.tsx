@@ -22,7 +22,7 @@ export default async function CreateFeedbackFormPage() {
   }
 
   const supabase = await createClient();
-  const googleStatus = getGoogleConfigStatus();
+  const googleStatus = await getGoogleConfigStatus(session.activeCollegeId || undefined);
 
   // Fetch active academic masters with lean column projections
   const [

@@ -16,6 +16,7 @@ import {
   BarChart3,
   AlertCircle,
   CreditCard,
+  Building2,
   Lock,
   Loader2,
 } from 'lucide-react';
@@ -86,6 +87,12 @@ const AdminMyBillingTab = dynamic(
     loading: () => <TabLoadingSkeleton title="Billing & Subscription" />,
   }
 );
+const InstitutionsManagementTab = dynamic(
+  () => import('./tabs/InstitutionsManagementTab').then((mod) => mod.InstitutionsManagementTab),
+  {
+    loading: () => <TabLoadingSkeleton title="Institutions" />,
+  }
+);
 
 interface Props {
   academicYears: AcademicYear[];
@@ -122,7 +129,7 @@ export function AdminDashboardTabs({
   counts,
   adminReqError,
 }: Props) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'admins' | 'academic' | 'forms' | 'audit' | 'billing'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'admins' | 'academic' | 'forms' | 'audit' | 'billing' | 'institutions'>('overview');
   const [isNavigatingToResults, setIsNavigatingToResults] = useState(false);
   const router = useRouter();
   const supabase = createClient();
@@ -155,6 +162,9 @@ export function AdminDashboardTabs({
       label: isSuperAdmin ? 'Billing & Access' : 'Billing & Plan',
       icon: CreditCard,
     },
+    ...(isSuperAdmin
+      ? [{ id: 'institutions', label: 'Institutions', icon: Building2 }]
+      : []),
   ];
 
   return (
@@ -314,6 +324,10 @@ export function AdminDashboardTabs({
           ) : (
             <AdminMyBillingTab />
           )
+        )}
+
+        {activeTab === 'institutions' && isSuperAdmin && (
+          <InstitutionsManagementTab />
         )}
       </div>
     </div>

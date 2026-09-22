@@ -179,19 +179,20 @@ export interface FeedbackResponseRecord {
 }
 
 // ====================================================================
-// BILLING & PAYMENT TYPES
+// BILLING & PAYMENT TYPES (TENANT-SCOPED)
 // ====================================================================
 
-export type PlanType = 'FREE' | 'MONTHLY' | 'YEARLY';
+export type PlanType = 'FREE' | 'BASIC' | 'FULL_ACCESS' | 'MONTHLY' | 'YEARLY' | string;
 export type AccessStatus = 'LOCKED' | 'UNLOCKED';
 export type SubscriptionStatus = 'ACTIVE' | 'EXPIRED' | 'CANCELLED' | 'PENDING';
 export type PaymentMethod = 'UPI' | 'BANK_TRANSFER';
 export type PaymentRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
-export interface AdminBillingAccount {
+export interface CollegeBillingAccount {
   id: string;
-  admin_user_id: string;
-  plan_type: PlanType;
+  college_id: string;
+  plan_type: string;
+  current_plan_id?: string | null;
   access_status: AccessStatus;
   subscription_status: SubscriptionStatus;
   started_at?: string | null;
@@ -199,30 +200,43 @@ export interface AdminBillingAccount {
   created_at: string;
   updated_at: string;
   // joined relations
-  admin?: Admin;
+  college?: any;
+  // legacy alias for compatibility
+  admin_user_id?: string;
 }
 
-export interface PaymentRequest {
+// Backward-compatibility alias
+export type AdminBillingAccount = CollegeBillingAccount;
+
+export interface CollegePaymentRequest {
   id: string;
-  admin_user_id: string;
-  plan_type: 'MONTHLY' | 'YEARLY';
+  college_id: string;
+  billing_plan_id?: string | null;
+  plan_type: string;
   amount: number;
   payment_method: PaymentMethod;
   payment_reference: string;
   payment_proof_url?: string | null;
+  snapshot_plan_name?: string | null;
+  snapshot_billing_interval?: string | null;
   status: PaymentRequestStatus;
+  submitted_by: string;
   reviewed_by?: string | null;
   reviewed_at?: string | null;
   rejection_reason?: string | null;
-  billing_plan_id?: string | null;
-  snapshot_plan_name?: string | null;
-  snapshot_billing_interval?: string | null;
   created_at: string;
   updated_at: string;
   // joined relations
+  college?: any;
+  submitter?: any;
+  reviewer?: any;
+  // legacy aliases for compatibility
+  admin_user_id?: string;
   admin?: Admin;
-  reviewer?: Admin;
 }
+
+// Backward-compatibility alias
+export type PaymentRequest = CollegePaymentRequest;
 
 export interface PaymentSettings {
   id: string;
@@ -259,14 +273,14 @@ export interface BillingPlan {
 }
 
 // ====================================================================
-// TRIAL ENTITLEMENT TYPES
+// TRIAL ENTITLEMENT TYPES (TENANT-SCOPED)
 // ====================================================================
 
 export type TrialStatus = 'ACTIVE' | 'EXPIRED' | 'REVOKED';
 
-export interface AdminTrialEntitlement {
+export interface CollegeTrialEntitlement {
   id: string;
-  admin_id: string;
+  college_id: string;
   granted_by: string;
   starts_at: string;
   expires_at: string;
@@ -278,17 +292,33 @@ export interface AdminTrialEntitlement {
   created_at: string;
   updated_at: string;
   // joined relations
+  college?: any;
+  granter?: any;
+  revoker?: any;
+  // legacy alias for compatibility
+  admin_id?: string;
   admin?: Admin;
-  granter?: Admin;
-  revoker?: Admin;
 }
 
+// Backward-compatibility alias
+export type AdminTrialEntitlement = CollegeTrialEntitlement;
+
 export interface BillingOverviewItem {
-  admin: Admin;
-  billing: AdminBillingAccount | null;
-  latestPaymentRequest: PaymentRequest | null;
-  paymentRequests: PaymentRequest[];
-  activeTrial?: AdminTrialEntitlement | null;
-  trialHistory?: AdminTrialEntitlement[];
+  college: {
+    id: string;
+    name: string;
+    code: string;
+    slug: string;
+    is_active: boolean;
+    created_at: string;
+  };
+  admin: Admin; // compatibility with existing UI components
+  billing: CollegeBillingAccount | null;
+  latestPaymentRequest: CollegePaymentRequest | null;
+  paymentRequests: CollegePaymentRequest[];
+  activeTrial?: CollegeTrialEntitlement | null;
+  trialHistory?: CollegeTrialEntitlement[];
+  membersCount?: number;
+  admins?: Array<{ id: string; email: string; name: string }>;
 }
 

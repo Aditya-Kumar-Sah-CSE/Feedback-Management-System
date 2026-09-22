@@ -25,6 +25,7 @@ async function getAdminDb(client?: any) {
 }
 
 export interface ScopeFilters {
+  collegeId?: string;
   academicYearId?: string;
   branchId?: string;
   semesterId?: string;
@@ -75,6 +76,16 @@ export async function getFormAnalyticsData(
     return { success: false, error: formErr?.message || 'Feedback form not found.' };
   }
 
+  // Tenant authorization check
+  if (!session.isPlatformSuperAdmin) {
+    const hasMembership = session.colleges.some(
+      (c) => c.collegeId === form.college_id && c.status === 'ACTIVE'
+    );
+    if (!hasMembership) {
+      return { success: false, error: 'Access denied. You do not have permission to view analytics for this form.' };
+    }
+  }
+
   // 3. Fetch Real Response Data from Google Sheet
   let canonicalRows: ReturnType<typeof normalizeSheetRows> = [];
   const isSemester = form.form_type === 'SEMESTER_FEEDBACK';
@@ -82,7 +93,7 @@ export async function getFormAnalyticsData(
 
   if (form.google_sheet_id && isGoogleConfigured()) {
     try {
-      const sheetData = await fetchRawSheetResponses(form.google_sheet_id);
+      const sheetData = await fetchRawSheetResponses(form.google_sheet_id, form.college_id);
 
       if (sheetData.rows.length > 0) {
         if (isSemester) {
@@ -184,6 +195,8 @@ export async function getFormAnalyticsData(
     }
   }
 
+  report.collegeId = form.college_id;
+
   return { success: true, report };
 }
 
@@ -203,7 +216,40 @@ export async function getOverallAnalyticsData(
     return { success: false, error: 'Unauthorized. Active admin credentials required.' };
   }
 
+  // Internal Tenant Enforcement
+  let targetCollegeId: string | undefined = filters?.collegeId;
+
+  if (!session.isPlatformSuperAdmin) {
+    const activeCollegeIds = session.colleges
+      .filter((c) => c.status === 'ACTIVE')
+      .map((c) => c.collegeId);
+
+    if (activeCollegeIds.length === 0) {
+      return { success: false, error: 'Access denied. No active college memberships found.' };
+    }
+
+    if (targetCollegeId) {
+      if (!activeCollegeIds.includes(targetCollegeId)) {
+        return { success: false, error: 'Access denied. You do not have permission to access analytics for this college.' };
+      }
+    } else {
+      if (session.activeCollegeId && activeCollegeIds.includes(session.activeCollegeId)) {
+        targetCollegeId = session.activeCollegeId;
+      } else {
+        targetCollegeId = activeCollegeIds[0];
+      }
+    }
+  } else {
+    // Platform super admin: use session.activeCollegeId if none provided in filter
+    if (!targetCollegeId && session.activeCollegeId) {
+      targetCollegeId = session.activeCollegeId;
+    }
+  }
+
   // Validate filter UUIDs if present
+  if (targetCollegeId && !isValidUUID(targetCollegeId)) {
+    return { success: false, error: 'Invalid College filter format.' };
+  }
   if (filters?.academicYearId && filters.academicYearId !== 'ALL' && !isValidUUID(filters.academicYearId)) {
     return { success: false, error: 'Invalid Academic Year filter format.' };
   }
@@ -235,6 +281,9 @@ export async function getOverallAnalyticsData(
     `)
     .order('created_at', { ascending: false });
 
+  if (targetCollegeId && isValidUUID(targetCollegeId)) {
+    query = query.eq('college_id', targetCollegeId);
+  }
   if (filters?.academicYearId && filters.academicYearId !== 'ALL') {
     query = query.eq('academic_year_id', filters.academicYearId);
   }
@@ -269,7 +318,7 @@ export async function getOverallAnalyticsData(
 
     if (form.google_sheet_id && isGoogleConfigured()) {
       try {
-        const sheetData = await fetchRawSheetResponses(form.google_sheet_id);
+        const sheetData = await fetchRawSheetResponses(form.google_sheet_id, form.college_id);
         if (sheetData.rows.length > 0) {
           if (isSemesterForm) {
             const detectedGrids = detectMultiGrids(sheetData.headers);
@@ -394,6 +443,8 @@ export async function getOverallAnalyticsData(
     subjectId: filters?.subjectId,
     subjectName,
   });
+
+  aggregated.collegeId = targetCollegeId;
 
   return { success: true, report: aggregated };
 }

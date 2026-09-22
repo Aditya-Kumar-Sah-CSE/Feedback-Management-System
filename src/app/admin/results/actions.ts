@@ -42,13 +42,33 @@ export async function getFormAnalyticsAction(
     return { success: false, error: 'Invalid feedback form identifier format.' };
   }
 
-  // 3. Centralized Billing & Plan Analytics Permission Check
-  const access = await assertAnalyticsAccess(
-    session.admin?.id,
-    session.admin?.email || session.user?.email,
-    session.admin?.role,
-    session.admin?.status
-  );
+  // 3. Tenant authorization check
+  const supabase = options?.client || (await createClient());
+  const { data: formRecord, error: formError } = await supabase
+    .from('feedback_forms')
+    .select('id, college_id')
+    .eq('id', formId)
+    .single();
+
+  if (formError || !formRecord) {
+    return { success: false, error: 'Form not found.', code: 'NOT_FOUND' };
+  }
+
+  if (!session.isPlatformSuperAdmin) {
+    const hasMembership = session.colleges.some(
+      (c) => c.collegeId === formRecord.college_id && c.status === 'ACTIVE'
+    );
+    if (!hasMembership) {
+      return {
+        success: false,
+        error: 'Access denied. You do not have permission to view analytics for this form.',
+        code: 'FORBIDDEN',
+      };
+    }
+  }
+
+  // 4. Centralized Billing & Plan Analytics Permission Check
+  const access = await assertAnalyticsAccess(session);
 
   if (!access.allowed) {
     return {
@@ -84,12 +104,7 @@ export async function getOverallAnalyticsAction(
   }
 
   // 2. Centralized Billing & Plan Analytics Permission Check
-  const access = await assertAnalyticsAccess(
-    session.admin?.id,
-    session.admin?.email || session.user?.email,
-    session.admin?.role,
-    session.admin?.status
-  );
+  const access = await assertAnalyticsAccess(session);
 
   if (!access.allowed) {
     return {
@@ -99,7 +114,14 @@ export async function getOverallAnalyticsAction(
     };
   }
 
-  return getOverallAnalyticsData(filters, options);
+  // 3. Enforce active college scope
+  const targetCollegeId = session.activeCollegeId;
+  const scopedFilters: ScopeFilters = {
+    ...filters,
+    collegeId: targetCollegeId || undefined,
+  };
+
+  return getOverallAnalyticsData(scopedFilters, options);
 }
 
 /**
@@ -127,6 +149,16 @@ export async function syncSingleFormResponsesAction(formId: string) {
     return { success: false, error: 'Form not found.' };
   }
 
+  // Tenant authorization check
+  if (!session.isPlatformSuperAdmin) {
+    const hasMembership = session.colleges.some(
+      (c) => c.collegeId === form.college_id && c.status === 'ACTIVE'
+    );
+    if (!hasMembership) {
+      return { success: false, error: 'Access denied. You do not have permission to sync responses for this form.' };
+    }
+  }
+
   const resolvedFormId =
     form.google_form_id ||
     form.google_form_edit_url?.match(/\/forms\/d\/([a-zA-Z0-9_-]+)/)?.[1] ||
@@ -143,7 +175,7 @@ export async function syncSingleFormResponsesAction(formId: string) {
   if (!isGoogleConfigured()) {
     return {
       success: false,
-      error: 'Google OAuth credentials are not configured on this server. Configure GOOGLE_REFRESH_TOKEN in .env.local to enable response synchronization.',
+      error: 'Google OAuth application client is not configured on this server.',
     };
   }
 

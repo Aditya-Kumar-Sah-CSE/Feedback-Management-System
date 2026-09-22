@@ -16,14 +16,15 @@ import {
   ArrowLeft,
   LogOut,
   CreditCard,
+  Building2,
 } from 'lucide-react';
 
 interface Props {
   adminName: string;
   adminEmail: string;
   isSuperAdmin: boolean;
-  activeTab: 'overview' | 'admins' | 'academic' | 'forms' | 'audit' | 'billing';
-  onSelectTab: (tab: 'overview' | 'admins' | 'academic' | 'forms' | 'audit' | 'billing') => void;
+  activeTab: 'overview' | 'admins' | 'academic' | 'forms' | 'audit' | 'billing' | 'institutions';
+  onSelectTab: (tab: 'overview' | 'admins' | 'academic' | 'forms' | 'audit' | 'billing' | 'institutions') => void;
   pendingRequestsCount?: number;
   onSignOut: () => void;
 }
@@ -51,9 +52,12 @@ export function AdminMobileNav({
     { id: 'forms', label: 'Feedback Forms', icon: FileSpreadsheet },
     { id: 'audit', label: 'Audit Trail', icon: Activity },
     { id: 'billing', label: isSuperAdmin ? 'Billing & Access' : 'Billing & Plan', icon: CreditCard },
+    ...(isSuperAdmin
+      ? [{ id: 'institutions', label: 'Institutions', icon: Building2 }]
+      : []),
   ];
 
-  const handleTabClick = (tabId: 'overview' | 'admins' | 'academic' | 'forms' | 'audit' | 'billing') => {
+  const handleTabClick = (tabId: 'overview' | 'admins' | 'academic' | 'forms' | 'audit' | 'billing' | 'institutions') => {
     onSelectTab(tabId);
     setIsOpen(false);
   };

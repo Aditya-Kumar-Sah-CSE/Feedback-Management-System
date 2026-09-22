@@ -23,12 +23,7 @@ export default async function FormResultsDetailPage({
   }
 
   // Authoritative server-side analytics access check BEFORE any query/fetch
-  const access = await assertAnalyticsAccess(
-    session.admin?.id,
-    session.admin?.email || session.user?.email,
-    session.admin?.role,
-    session.admin?.status
-  );
+  const access = await assertAnalyticsAccess(session);
 
   if (!access.allowed) {
     return (

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAdminSession } from '@/lib/auth/admin-auth';
 import { getOverallAnalyticsData } from '@/lib/analytics/service';
 import { generateOverallFeedbackPDF } from '@/lib/analytics/pdf-generator';
+import { getCollegeBranding } from '@/lib/tenant/branding';
 import { assertPdfAccess } from '@/lib/billing/access-control';
 
 export const dynamic = 'force-dynamic';
@@ -19,12 +20,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 2. Mandatory PDF Reports & Exports Authorization Check
-    const access = await assertPdfAccess(
-      session.admin?.id,
-      session.admin?.email || session.user?.email,
-      session.admin?.role,
-      session.admin?.status
-    );
+    const access = await assertPdfAccess(session);
 
     if (!access.allowed) {
       return NextResponse.json(
@@ -43,8 +39,17 @@ export async function GET(request: NextRequest) {
     const facultyId = searchParams.get('facultyId') || undefined;
     const subjectId = searchParams.get('subjectId') || undefined;
 
+    const targetCollegeId = session.activeCollegeId;
+    if (!targetCollegeId && !session.isPlatformSuperAdmin) {
+      return NextResponse.json(
+        { error: 'Active college context is required.' },
+        { status: 400 }
+      );
+    }
+
     // 2. Compute Aggregated Analytics using pure service
     const result = await getOverallAnalyticsData({
+      collegeId: targetCollegeId || undefined,
       academicYearId,
       branchId,
       semesterId,
@@ -59,13 +64,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 3. Generate PDF Buffer
-    const pdfBuffer = await generateOverallFeedbackPDF(result.report);
+    // 3. Generate PDF Buffer with Tenant Branding
+    const branding = await getCollegeBranding(result.report.collegeId || targetCollegeId || '');
+    const pdfBuffer = await generateOverallFeedbackPDF(result.report, branding);
 
     const safeScopeName = result.report.scopeTitle
       .replace(/[^a-zA-Z0-9-_]/g, '_')
       .slice(0, 40);
-    const filename = `BCE-Institutional-Feedback-${safeScopeName}.pdf`;
+    const filename = `${branding.code}-Institutional-Feedback-${safeScopeName}.pdf`;
 
     return new Response(new Uint8Array(pdfBuffer), {
       status: 200,

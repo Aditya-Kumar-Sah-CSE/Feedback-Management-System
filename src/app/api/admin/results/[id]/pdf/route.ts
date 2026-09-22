@@ -5,6 +5,7 @@ import {
   generateIndividualFacultyPDF,
   generateSemesterComparativePDF,
 } from '@/lib/analytics/pdf-generator';
+import { getCollegeBranding } from '@/lib/tenant/branding';
 import { isValidUUID } from '@/lib/validation';
 import { assertPdfAccess } from '@/lib/billing/access-control';
 
@@ -34,12 +35,7 @@ export async function GET(
     }
 
     // 2. Mandatory PDF Reports & Exports Authorization Check
-    const access = await assertPdfAccess(
-      session.admin?.id,
-      session.admin?.email || session.user?.email,
-      session.admin?.role,
-      session.admin?.status
-    );
+    const access = await assertPdfAccess(session);
 
     if (!access.allowed) {
       return NextResponse.json(
@@ -61,6 +57,7 @@ export async function GET(
     }
 
     const report = result.report;
+    const branding = await getCollegeBranding(report.collegeId || session.activeCollegeId || '');
     const isSemester = report.isSemesterForm || report.formType === 'SEMESTER_FEEDBACK';
     const targetFaculty = request.nextUrl.searchParams.get('faculty');
     const requestedScope = request.nextUrl.searchParams.get('scope');
@@ -72,8 +69,8 @@ export async function GET(
 
     if (isSemester && (requestedScope === 'SEMESTER' || !targetFaculty)) {
       // Comparative Semester PDF
-      pdfBuffer = await generateSemesterComparativePDF(report);
-      filename = `BCE-Semester-Comparative-${safeSlug || report.formId}.pdf`;
+      pdfBuffer = await generateSemesterComparativePDF(report, branding);
+      filename = `${branding.code}-Semester-Comparative-${safeSlug || report.formId}.pdf`;
     } else if (isSemester && targetFaculty) {
       // Specific Faculty inside semester form
       const matchedGrid = report.facultyGrids?.find(
@@ -83,13 +80,13 @@ export async function GET(
       );
 
       const targetReport = matchedGrid ? matchedGrid.report : report;
-      pdfBuffer = await generateIndividualFacultyPDF(targetReport);
+      pdfBuffer = await generateIndividualFacultyPDF(targetReport, branding);
       const facSlug = (matchedGrid?.facultyName || targetFaculty).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-      filename = `BCE-Faculty-Feedback-${facSlug}-${safeSlug || report.formId}.pdf`;
+      filename = `${branding.code}-Faculty-Feedback-${facSlug}-${safeSlug || report.formId}.pdf`;
     } else {
-      // Legacy single faculty form
-      pdfBuffer = await generateIndividualFacultyPDF(report);
-      filename = `BCE-Faculty-Feedback-${safeSlug || report.formId}.pdf`;
+      // Single faculty form
+      pdfBuffer = await generateIndividualFacultyPDF(report, branding);
+      filename = `${branding.code}-Faculty-Feedback-${safeSlug || report.formId}.pdf`;
     }
 
     return new Response(new Uint8Array(pdfBuffer), {

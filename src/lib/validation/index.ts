@@ -15,7 +15,11 @@ export function isValidUUID(val: unknown): val is string {
 export const requestAccessSchema = z.object({
   name: z.string().trim().min(2, 'Full name must be at least 2 characters').max(100),
   email: z.string().trim().email('Invalid email address format').toLowerCase(),
-  department: z.string().trim().max(100).optional(),
+  department: z.string().trim().max(100).optional().nullable(),
+  designation: z.string().trim().max(100).optional().nullable(),
+  contactNumber: z.string().trim().max(20).optional().nullable(),
+  collegeId: z.string().uuid('College ID must be a valid UUID').optional().nullable(),
+  collegeSlug: z.string().trim().max(100).optional().nullable(),
 });
 
 export const semesterFormItemSchema = z.object({
@@ -170,11 +174,14 @@ export type UpdateBillingPlanInput = z.infer<typeof updateBillingPlanSchema>;
 // ====================================================================
 
 export const grantTrialSchema = z.object({
-  adminId: z.string().uuid('Admin ID must be a valid UUID'),
+  collegeId: z.string().uuid('College ID must be a valid UUID').optional(),
+  adminId: z.string().uuid('Admin ID must be a valid UUID').optional(),
   durationDays: z.number().int().min(1, 'Duration must be at least 1 day').max(365, 'Duration cannot exceed 365 days'),
   startsAt: z.string().datetime({ offset: true }).optional().or(z.string().datetime().optional()),
   features: z.array(z.string().trim().min(1)).min(1, 'At least one feature must be selected'),
   note: z.string().trim().max(500, 'Note cannot exceed 500 characters').optional().nullable(),
+}).refine(data => data.collegeId !== undefined || data.adminId !== undefined, {
+  message: 'College ID is required',
 });
 
 export type GrantTrialInput = z.infer<typeof grantTrialSchema>;
@@ -199,4 +206,43 @@ export type RevokeTrialInput = z.infer<typeof revokeTrialSchema>;
 
 export const replaceTrialSchema = grantTrialSchema;
 export type ReplaceTrialInput = GrantTrialInput;
+
+// ====================================================================
+// INSTITUTION / COLLEGE MANAGEMENT SCHEMAS (Super Admin only)
+// ====================================================================
+
+export const createCollegeSchema = z.object({
+  name: z.string().trim().min(2, 'College name must be at least 2 characters').max(255, 'College name cannot exceed 255 characters'),
+  code: z.string().trim().min(2, 'College code must be at least 2 characters').max(50, 'College code cannot exceed 50 characters').regex(/^[A-Za-z0-9_-]+$/, 'Code can only contain letters, numbers, hyphens, and underscores'),
+  slug: z.string().trim().min(2, 'Slug must be at least 2 characters').max(100, 'Slug cannot exceed 100 characters').regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Slug must consist of lowercase alphanumeric characters and hyphens (e.g. bce-bgp)'),
+  logoUrl: z.string().trim().url('Invalid URL format for logo').optional().or(z.literal('')).nullable(),
+  address: z.string().trim().max(500, 'Address cannot exceed 500 characters').optional().or(z.literal('')).nullable(),
+  contactEmail: z.string().trim().email('Invalid email address format').optional().or(z.literal('')).nullable(),
+  contactPhone: z.string().trim().max(50, 'Phone cannot exceed 50 characters').optional().or(z.literal('')).nullable(),
+  websiteUrl: z.string().trim().url('Invalid URL format for website').optional().or(z.literal('')).nullable(),
+  tagline: z.string().trim().max(255, 'Tagline cannot exceed 255 characters').optional().or(z.literal('')).nullable(),
+  affiliatedUniversity: z.string().trim().max(255, 'Affiliated university cannot exceed 255 characters').optional().or(z.literal('')).nullable(),
+  establishedYear: z.number().int().min(1800, 'Established year must be 1800 or later').max(2100, 'Established year is too far in future').optional().nullable(),
+  isActive: z.boolean().default(true),
+});
+
+export type CreateCollegeInput = z.infer<typeof createCollegeSchema>;
+
+export const updateCollegeSchema = z.object({
+  id: z.string().uuid('College ID must be a valid UUID'),
+  name: z.string().trim().min(2, 'College name must be at least 2 characters').max(255, 'College name cannot exceed 255 characters'),
+  code: z.string().trim().min(2, 'College code must be at least 2 characters').max(50, 'College code cannot exceed 50 characters').regex(/^[A-Za-z0-9_-]+$/, 'Code can only contain letters, numbers, hyphens, and underscores'),
+  slug: z.string().trim().min(2, 'Slug must be at least 2 characters').max(100, 'Slug cannot exceed 100 characters').regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Slug must consist of lowercase alphanumeric characters and hyphens (e.g. bce-bgp)'),
+  logoUrl: z.string().trim().url('Invalid URL format for logo').optional().or(z.literal('')).nullable(),
+  address: z.string().trim().max(500, 'Address cannot exceed 500 characters').optional().or(z.literal('')).nullable(),
+  contactEmail: z.string().trim().email('Invalid email address format').optional().or(z.literal('')).nullable(),
+  contactPhone: z.string().trim().max(50, 'Phone cannot exceed 50 characters').optional().or(z.literal('')).nullable(),
+  websiteUrl: z.string().trim().url('Invalid URL format for website').optional().or(z.literal('')).nullable(),
+  tagline: z.string().trim().max(255, 'Tagline cannot exceed 255 characters').optional().or(z.literal('')).nullable(),
+  affiliatedUniversity: z.string().trim().max(255, 'Affiliated university cannot exceed 255 characters').optional().or(z.literal('')).nullable(),
+  establishedYear: z.number().int().min(1800, 'Established year must be 1800 or later').max(2100, 'Established year is too far in future').optional().nullable(),
+  isActive: z.boolean(),
+});
+
+export type UpdateCollegeInput = z.infer<typeof updateCollegeSchema>;
 

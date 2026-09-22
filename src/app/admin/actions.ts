@@ -3,11 +3,10 @@
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAdminSession, SUPER_ADMIN_EMAIL } from '@/lib/auth/admin-auth';
+import { getAdminSession } from '@/lib/auth/admin-auth';
 import { ACADEMIC_CACHE_TAG } from '@/lib/supabase/academic-cache';
 import { branchSchema, isValidUUID } from '@/lib/validation';
 import { deleteFeedbackFormAction as deleteFormInternal } from './forms/actions';
-import { ensureBillingAccount } from '@/lib/billing/access-control';
 
 async function getAdminDb() {
   return createAdminClient() || await createClient();
@@ -43,179 +42,140 @@ async function logAuditAction(
 export async function approveAdminRequestAction(requestId: string) {
   const session = await getAdminSession();
   if (!session.isAuthenticated || !session.isSuperAdmin) {
-    return { success: false, error: 'Only a Super Admin can approve requests.' };
+    return { success: false, error: 'Only an authorized administrator can approve requests.' };
   }
 
   const supabase = await getAdminDb();
 
-  // Get request details
-  const { data: req, error: fetchErr } = await supabase
-    .from('admin_requests')
+  // First check if this is a multi-tenant college_admin_requests record
+  const { data: collegeReq } = await supabase
+    .from('college_admin_requests')
     .select('*')
     .eq('id', requestId)
     .single();
 
-  if (fetchErr || !req) {
-    console.error('[ADMIN_REQUEST_APPROVE]', { requestId, error: 'Request not found', fetchErr });
-    return { success: false, error: 'Request not found.' };
-  }
+  if (collegeReq) {
+    if (collegeReq.status === 'APPROVED') {
+      return { success: false, error: 'This administrator request has already been approved.' };
+    }
 
-  // Duplicate approval prevention
-  if (req.status === 'APPROVED') {
-    return { success: false, error: 'This administrator request has already been approved.' };
-  }
-
-  console.log('[ADMIN_REQUEST_APPROVE]', { requestId, email: req.email, currentStatus: req.status });
-
-  // Resolve canonical user_id from auth.users if missing from the request
-  let targetUserId = req.user_id;
-  if (!targetUserId) {
-    try {
-      const { data: userListData } = await supabase.auth.admin.listUsers();
-      const matchedUser = userListData?.users?.find(
-        (u: any) => u.email?.toLowerCase() === req.email.toLowerCase().trim()
-      );
-      if (matchedUser) {
-        targetUserId = matchedUser.id;
+    let targetUserId = collegeReq.user_id;
+    if (!targetUserId) {
+      try {
+        const { data: userListData } = await supabase.auth.admin.listUsers();
+        const matchedUser = userListData?.users?.find(
+          (u: any) => u.email?.toLowerCase() === collegeReq.email.toLowerCase().trim()
+        );
+        if (matchedUser) {
+          targetUserId = matchedUser.id;
+        }
+      } catch (authResolveErr) {
+        console.warn('[APPROVE_USER_ID_RESOLVE_WARNING]', authResolveErr);
       }
-    } catch (authResolveErr) {
-      console.warn('[APPROVE_USER_ID_RESOLVE_WARNING]', authResolveErr);
     }
-  }
 
-  // Create / activate admin in admins table with schema fallback
-  const baseAdminPayload = {
-    user_id: targetUserId || null,
-    email: req.email.toLowerCase().trim(),
-    name: req.name,
-    role: 'ADMIN',
-    updated_at: new Date().toISOString(),
-  };
+    if (!targetUserId) {
+      return { success: false, error: 'Cannot approve request: user account not found in Auth system.' };
+    }
 
-  let { data: newAdmin, error: adminErr } = await supabase
-    .from('admins')
-    .upsert(
-      {
-        ...baseAdminPayload,
-        status: 'ACTIVE',
-      },
-      { onConflict: 'email' }
-    )
-    .select('*')
-    .single();
-
-  if (adminErr && (adminErr.message.includes('status') || adminErr.code === '42703')) {
-    const { data: fallbackAdmin, error: fallbackErr } = await supabase
-      .from('admins')
+    // Upsert into college_memberships
+    const { error: memberErr } = await supabase
+      .from('college_memberships')
       .upsert(
-        baseAdminPayload,
-        { onConflict: 'email' }
-      )
-      .select('*')
-      .single();
-    newAdmin = fallbackAdmin;
-    adminErr = fallbackErr;
-  }
+        {
+          college_id: collegeReq.college_id,
+          user_id: targetUserId,
+          role: 'COLLEGE_ADMIN',
+          status: 'ACTIVE',
+        },
+        { onConflict: 'college_id,user_id' }
+      );
 
-  if (adminErr) {
-    return { success: false, error: adminErr.message };
-  }
-
-  // Update request status and ensure user_id is synchronized
-  await supabase
-    .from('admin_requests')
-    .update({
-      status: 'APPROVED',
-      user_id: targetUserId || req.user_id,
-      reviewed_by: session.admin?.id || null,
-      reviewed_at: new Date().toISOString(),
-    })
-    .eq('id', requestId);
-
-  // Audit
-  await logAuditAction(
-    supabase,
-    { adminId: session.admin?.id, email: session.user?.email },
-    'APPROVE_ADMIN_REQUEST',
-    'admin_requests',
-    requestId,
-    `Approved admin request for ${req.email} (${req.name})`
-  );
-
-  revalidatePath('/admin/dashboard');
-  console.log('[ADMIN_REQUEST_APPROVE]', { requestId, result: 'success', adminId: newAdmin?.id });
-
-  // Auto-create billing account for newly approved admin (defaults to LOCKED)
-  if (newAdmin?.id) {
-    try {
-      await ensureBillingAccount(newAdmin.id, { accessStatus: 'LOCKED', planType: 'FREE' });
-    } catch (billingErr) {
-      console.warn('[BILLING_ACCOUNT_INIT]', { adminId: newAdmin.id, error: billingErr });
+    if (memberErr) {
+      console.error('[APPROVE_MEMBERSHIP_ERROR]', memberErr);
+      return { success: false, error: memberErr.message };
     }
+
+    // Update college_admin_requests
+    await supabase
+      .from('college_admin_requests')
+      .update({
+        status: 'APPROVED',
+        user_id: targetUserId,
+        reviewed_by: session.userId || null,
+        reviewed_at: new Date().toISOString(),
+      })
+      .eq('id', requestId);
+
+    // Audit log
+    await logAuditAction(
+      supabase,
+      { adminId: session.userId, email: session.email },
+      'APPROVE_COLLEGE_ADMIN_REQUEST',
+      'college_admin_requests',
+      requestId,
+      `Approved college admin request for ${collegeReq.email} at college ${collegeReq.college_id}`
+    );
+
+    revalidatePath('/admin/dashboard');
+    return { success: true };
   }
 
-  return { success: true, admin: newAdmin };
+  return { success: false, error: 'Administrator request not found.' };
 }
 
 export async function rejectAdminRequestAction(requestId: string) {
   const session = await getAdminSession();
   if (!session.isAuthenticated || !session.isSuperAdmin) {
-    return { success: false, error: 'Only a Super Admin can reject requests.' };
+    return { success: false, error: 'Only an authorized administrator can reject requests.' };
   }
 
   const supabase = await getAdminDb();
 
-  // Get request details
-  const { data: req, error: fetchErr } = await supabase
-    .from('admin_requests')
+  // First check college_admin_requests
+  const { data: collegeReq } = await supabase
+    .from('college_admin_requests')
     .select('*')
     .eq('id', requestId)
     .single();
 
-  if (fetchErr || !req) {
-    console.error('[ADMIN_REQUEST_REJECT]', { requestId, error: 'Request not found', fetchErr });
-    return { success: false, error: 'Request not found.' };
+  if (collegeReq) {
+    if (collegeReq.status === 'REJECTED') {
+      return { success: false, error: 'This administrator request has already been rejected.' };
+    }
+
+    await supabase
+      .from('college_admin_requests')
+      .update({
+        status: 'REJECTED',
+        reviewed_by: session.userId || null,
+        reviewed_at: new Date().toISOString(),
+      })
+      .eq('id', requestId);
+
+    // Suspend college membership if present
+    if (collegeReq.user_id && collegeReq.college_id) {
+      await supabase
+        .from('college_memberships')
+        .update({ status: 'SUSPENDED' })
+        .eq('college_id', collegeReq.college_id)
+        .eq('user_id', collegeReq.user_id);
+    }
+
+    await logAuditAction(
+      supabase,
+      { adminId: session.userId, email: session.email },
+      'REJECT_COLLEGE_ADMIN_REQUEST',
+      'college_admin_requests',
+      requestId,
+      `Rejected college admin request for ${collegeReq.email} at college ${collegeReq.college_id}`
+    );
+
+    revalidatePath('/admin/dashboard');
+    return { success: true };
   }
 
-  // Duplicate rejection prevention
-  if (req.status === 'REJECTED') {
-    return { success: false, error: 'This administrator request has already been rejected.' };
-  }
-
-  console.log('[ADMIN_REQUEST_REJECT]', { requestId, email: req.email, currentStatus: req.status });
-
-  // Update request status
-  await supabase
-    .from('admin_requests')
-    .update({
-      status: 'REJECTED',
-      reviewed_by: session.admin?.id || null,
-      reviewed_at: new Date().toISOString(),
-    })
-    .eq('id', requestId);
-
-  // Maintain consistency: if non-super-admin record exists in admins, deactivate it
-  await supabase
-    .from('admins')
-    .update({
-      status: 'INACTIVE',
-      updated_at: new Date().toISOString(),
-    })
-    .eq('email', req.email.toLowerCase().trim())
-    .neq('role', 'SUPER_ADMIN');
-
-  await logAuditAction(
-    supabase,
-    { adminId: session.admin?.id, email: session.user?.email },
-    'REJECT_ADMIN_REQUEST',
-    'admin_requests',
-    requestId,
-    `Rejected admin request for ${req.email}`
-  );
-
-  revalidatePath('/admin/dashboard');
-  console.log('[ADMIN_REQUEST_REJECT]', { requestId, result: 'success' });
-  return { success: true };
+  return { success: false, error: 'Administrator request not found.' };
 }
 
 export async function revokeAdminAccessAction(targetAdminId: string, reason?: string) {
@@ -226,68 +186,47 @@ export async function revokeAdminAccessAction(targetAdminId: string, reason?: st
 
   const supabase = await getAdminDb();
 
-  const { data: target, error: fetchErr } = await supabase
-    .from('admins')
-    .select('*')
-    .eq('id', targetAdminId)
-    .single();
+  const { data: member } = await supabase
+    .from('college_memberships')
+    .select('id, user_id, role, status, college_id')
+    .or(`id.eq.${targetAdminId},user_id.eq.${targetAdminId}`)
+    .maybeSingle();
 
-  if (fetchErr || !target) {
-    return { success: false, error: 'Target administrator record not found.' };
-  }
-
-  // Security check: Target must have ADMIN role
-  if (target.role !== 'ADMIN') {
-    return { success: false, error: 'Super Admin accounts cannot be revoked.' };
-  }
-
-  if (target.email.toLowerCase().trim() === SUPER_ADMIN_EMAIL) {
-    return { success: false, error: 'The primary Super Admin account cannot be revoked.' };
+  if (!member) {
+    return { success: false, error: 'Target administrator membership record not found.' };
   }
 
   // Prevent self-revocation
-  if (target.id === session.admin?.id || (target.user_id && target.user_id === session.user?.id)) {
+  if (member.user_id === session.userId) {
     return { success: false, error: 'Administrators cannot revoke their own account.' };
   }
 
-  if (target.status === 'INACTIVE') {
+  if (member.status === 'INACTIVE') {
     return { success: false, error: 'This administrator account is already revoked / inactive.' };
   }
 
-  let { error: updateErr } = await supabase
-    .from('admins')
+  const { error: updateErr } = await supabase
+    .from('college_memberships')
     .update({
       status: 'INACTIVE',
       updated_at: new Date().toISOString(),
     })
-    .eq('id', targetAdminId);
-
-  if (updateErr && (updateErr.message.includes('status') || updateErr.code === '42703')) {
-    const { error: fallbackErr } = await supabase
-      .from('admins')
-      .update({
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', targetAdminId);
-    updateErr = fallbackErr;
-  }
+    .eq('id', member.id);
 
   if (updateErr) {
     return { success: false, error: updateErr.message };
   }
 
-  // Record audit log with safe metadata (no tokens/passwords)
   await logAuditAction(
     supabase,
-    { adminId: session.admin?.id, email: session.user?.email },
+    { adminId: session.userId, email: session.email },
     'ADMIN_ACCESS_REVOKED',
-    'admins',
-    targetAdminId,
-    `Revoked admin access for ${target.email} (${target.name}). Target User ID: ${target.user_id || 'unlinked'}.${reason ? ` Reason: ${reason}` : ''}`
+    'college_memberships',
+    member.id,
+    `Revoked college membership for user ${member.user_id} at college ${member.college_id}.${reason ? ` Reason: ${reason}` : ''}`
   );
 
   revalidatePath('/admin/dashboard');
-  revalidatePath('/admin');
   return { success: true };
 }
 
@@ -299,37 +238,27 @@ export async function reactivateAdminAccessAction(targetAdminId: string) {
 
   const supabase = await getAdminDb();
 
-  const { data: target, error: fetchErr } = await supabase
-    .from('admins')
-    .select('*')
-    .eq('id', targetAdminId)
-    .single();
+  const { data: member } = await supabase
+    .from('college_memberships')
+    .select('id, user_id, role, status, college_id')
+    .or(`id.eq.${targetAdminId},user_id.eq.${targetAdminId}`)
+    .maybeSingle();
 
-  if (fetchErr || !target) {
-    return { success: false, error: 'Target administrator record not found.' };
+  if (!member) {
+    return { success: false, error: 'Target administrator membership record not found.' };
   }
 
-  if (target.status === 'ACTIVE') {
+  if (member.status === 'ACTIVE') {
     return { success: false, error: 'This administrator account is already active.' };
   }
 
-  let { error: updateErr } = await supabase
-    .from('admins')
+  const { error: updateErr } = await supabase
+    .from('college_memberships')
     .update({
       status: 'ACTIVE',
       updated_at: new Date().toISOString(),
     })
-    .eq('id', targetAdminId);
-
-  if (updateErr && (updateErr.message.includes('status') || updateErr.code === '42703')) {
-    const { error: fallbackErr } = await supabase
-      .from('admins')
-      .update({
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', targetAdminId);
-    updateErr = fallbackErr;
-  }
+    .eq('id', member.id);
 
   if (updateErr) {
     return { success: false, error: updateErr.message };
@@ -337,17 +266,17 @@ export async function reactivateAdminAccessAction(targetAdminId: string) {
 
   await logAuditAction(
     supabase,
-    { adminId: session.admin?.id, email: session.user?.email },
+    { adminId: session.userId, email: session.email },
     'ADMIN_ACCESS_REACTIVATED',
-    'admins',
-    targetAdminId,
-    `Reactivated admin access for ${target.email} (${target.name}). Target User ID: ${target.user_id || 'unlinked'}.`
+    'college_memberships',
+    member.id,
+    `Reactivated college membership for user ${member.user_id} at college ${member.college_id}.`
   );
 
   revalidatePath('/admin/dashboard');
-  revalidatePath('/admin');
   return { success: true };
 }
+
 
 export async function toggleAdminStatusAction(targetAdminId: string, newStatus: 'ACTIVE' | 'INACTIVE') {
   if (newStatus === 'INACTIVE') {

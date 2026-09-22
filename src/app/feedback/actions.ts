@@ -58,7 +58,8 @@ export interface PublicFormSummary {
 export async function getPublicFacultiesForSelectionAction(
   yearId: string,
   branchId: string,
-  semesterId: string
+  semesterId: string,
+  collegeId?: string
 ): Promise<{ success: boolean; faculties: Faculty[]; error?: string }> {
   try {
     if (!isValidUUID(yearId) || !isValidUUID(branchId) || !isValidUUID(semesterId)) {
@@ -67,7 +68,7 @@ export async function getPublicFacultiesForSelectionAction(
 
     const supabase = await getPublicDb();
 
-    const { data: assignments, error } = await supabase
+    let query = supabase
       .from('faculty_subject_assignments')
       .select(`
         faculty_id,
@@ -78,6 +79,12 @@ export async function getPublicFacultiesForSelectionAction(
       `)
       .eq('academic_year_id', yearId)
       .eq('is_active', true);
+
+    if (collegeId && isValidUUID(collegeId)) {
+      query = query.eq('college_id', collegeId);
+    }
+
+    const { data: assignments, error } = await query;
 
     if (error) {
       return { success: false, faculties: [], error: 'Unable to load faculty list.' };
@@ -117,7 +124,8 @@ export async function getPublicSubjectsForFacultyAction(
   yearId: string,
   branchId: string,
   semesterId: string,
-  facultyId: string
+  facultyId: string,
+  collegeId?: string
 ): Promise<{ success: boolean; subjects: Subject[]; error?: string }> {
   try {
     if (
@@ -131,7 +139,7 @@ export async function getPublicSubjectsForFacultyAction(
 
     const supabase = await getPublicDb();
 
-    const { data: assignments, error } = await supabase
+    let query = supabase
       .from('faculty_subject_assignments')
       .select(`
         subject_id,
@@ -143,6 +151,12 @@ export async function getPublicSubjectsForFacultyAction(
       .eq('academic_year_id', yearId)
       .eq('faculty_id', facultyId)
       .eq('is_active', true);
+
+    if (collegeId && isValidUUID(collegeId)) {
+      query = query.eq('college_id', collegeId);
+    }
+
+    const { data: assignments, error } = await query;
 
     if (error) {
       return { success: false, subjects: [], error: 'Unable to load subject list.' };
@@ -185,7 +199,8 @@ export async function getPublicFeedbackFormAction(
   branchId: string,
   semesterId: string,
   facultyId: string,
-  subjectId: string
+  subjectId: string,
+  collegeId?: string
 ): Promise<{
   success: boolean;
   form: PublicFormSummary | null;
@@ -210,7 +225,7 @@ export async function getPublicFeedbackFormAction(
 
     const supabase = await getPublicDb();
 
-    const { data: form, error } = await supabase
+    let query = supabase
       .from('feedback_forms')
       .select(`
         id,
@@ -232,8 +247,13 @@ export async function getPublicFeedbackFormAction(
       .eq('semester_id', semesterId)
       .eq('faculty_id', facultyId)
       .eq('subject_id', subjectId)
-      .in('status', ['PUBLISHED', 'CLOSED'])
-      .maybeSingle();
+      .in('status', ['PUBLISHED', 'CLOSED']);
+
+    if (collegeId && isValidUUID(collegeId)) {
+      query = query.eq('college_id', collegeId);
+    }
+
+    const { data: form, error } = await query.maybeSingle();
 
     if (error) {
       console.error('getPublicFeedbackFormAction query error:', error);
@@ -284,7 +304,10 @@ export async function getPublicFeedbackFormAction(
  * Fetch a single feedback form by ID for direct links (/feedback/[id]).
  * Returns only public safe fields and enforces that DRAFT/ARCHIVED forms are not exposed.
  */
-export async function getPublicFeedbackFormByIdAction(formId: string): Promise<{
+export async function getPublicFeedbackFormByIdAction(
+  formId: string,
+  collegeId?: string
+): Promise<{
   success: boolean;
   form: PublicFormSummary | null;
   status: 'PUBLISHED' | 'CLOSED' | 'UNAVAILABLE';
@@ -302,7 +325,7 @@ export async function getPublicFeedbackFormByIdAction(formId: string): Promise<{
 
     const supabase = await getPublicDb();
 
-    const { data: form, error } = await supabase
+    let query = supabase
       .from('feedback_forms')
       .select(`
         id,
@@ -319,8 +342,13 @@ export async function getPublicFeedbackFormByIdAction(formId: string): Promise<{
         branch:branches(id, name, code),
         semester:semesters(id, name, semester_number)
       `)
-      .eq('id', formId)
-      .maybeSingle();
+      .eq('id', formId);
+
+    if (collegeId && isValidUUID(collegeId)) {
+      query = query.eq('college_id', collegeId);
+    }
+
+    const { data: form, error } = await query.maybeSingle();
 
     if (error || !form) {
       return {
@@ -372,7 +400,8 @@ export async function getPublicFeedbackFormByIdAction(formId: string): Promise<{
 export async function getPublicSemesterFeedbackFormAction(
   yearId: string,
   branchId: string,
-  semesterId: string
+  semesterId: string,
+  collegeId?: string
 ): Promise<{
   success: boolean;
   form: PublicFormSummary | null;
@@ -387,7 +416,7 @@ export async function getPublicSemesterFeedbackFormAction(
 
     const supabase = await getPublicDb();
 
-    const { data: form, error } = await supabase
+    let query = supabase
       .from('feedback_forms')
       .select(`
         id,
@@ -407,8 +436,13 @@ export async function getPublicSemesterFeedbackFormAction(
       .eq('semester_id', semesterId)
       .eq('form_type', 'SEMESTER_FEEDBACK')
       .in('status', ['PUBLISHED', 'CLOSED'])
-      .order('created_at', { ascending: false })
-      .maybeSingle();
+      .order('created_at', { ascending: false });
+
+    if (collegeId && isValidUUID(collegeId)) {
+      query = query.eq('college_id', collegeId);
+    }
+
+    const { data: form, error } = await query.maybeSingle();
 
     if (error || !form) {
       return {
@@ -475,6 +509,7 @@ export async function getPublicActiveFormsAction(params?: {
   pageSize?: number;
   branchId?: string;
   search?: string;
+  collegeId?: string;
 }): Promise<PublicActiveFormsResult> {
   try {
     const page = Math.max(1, params?.page || 1);
@@ -507,6 +542,10 @@ export async function getPublicActiveFormsAction(params?: {
       .eq('status', 'PUBLISHED')
       .order('published_at', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false });
+
+    if (params?.collegeId && isValidUUID(params.collegeId)) {
+      query = query.eq('college_id', params.collegeId);
+    }
 
     if (params?.branchId && isValidUUID(params.branchId)) {
       query = query.eq('branch_id', params.branchId);

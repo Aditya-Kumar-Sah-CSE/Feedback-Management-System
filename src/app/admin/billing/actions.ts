@@ -3,17 +3,23 @@
 import { revalidatePath } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
-import { getAdminSession, SUPER_ADMIN_EMAIL } from '@/lib/auth/admin-auth';
-import { ensureBillingAccount, getAdminBillingStatus, assertAnalyticsAccess } from '@/lib/billing/access-control';
+import { getAdminSession } from '@/lib/auth/admin-auth';
+import {
+  ensureCollegeBillingAccount,
+  getCollegeBillingStatus,
+  assertAnalyticsAccess,
+} from '@/lib/billing/access-control';
 import {
   isValidUUID,
   submitPaymentRequestSchema,
   updatePaymentSettingsSchema,
 } from '@/lib/validation';
 import type {
-  AdminBillingAccount,
-  PaymentRequest,
+  CollegeBillingAccount,
+  CollegePaymentRequest,
+  CollegeTrialEntitlement,
   PaymentSettings,
+  BillingOverviewItem,
 } from '@/types/database';
 
 async function getAdminDb() {
@@ -21,21 +27,24 @@ async function getAdminDb() {
 }
 
 async function logAudit(
-  supabase: ReturnType<typeof createAdminClient>,
-  actor: { adminId?: string | null; email?: string },
+  supabase: any,
+  actor: { collegeId?: string | null; userId?: string | null; email?: string },
   action: string,
   entityType: string,
   entityId: string,
   details: string,
+  metadata?: any,
 ) {
   try {
-    await supabase!.from('audit_logs').insert({
-      admin_id: actor.adminId || null,
+    await supabase.from('audit_logs').insert({
+      college_id: actor.collegeId || null,
+      actor_user_id: actor.userId || null,
       actor_email: actor.email || '',
       action,
       entity_type: entityType,
       entity_id: entityId,
       details,
+      metadata: metadata || {},
     });
   } catch (err) {
     console.error('Billing audit log write error:', err);
@@ -43,7 +52,7 @@ async function logAudit(
 }
 
 // ====================================================================
-// PAYMENT SETTINGS (Super Admin only writes, Admin reads)
+// PAYMENT SETTINGS (Platform Singleton: Super Admin writes, Admin reads)
 // ====================================================================
 
 export async function getPaymentSettingsAction() {
@@ -100,7 +109,7 @@ export async function updatePaymentSettingsAction(input: {
     ifsc_code: validation.data.ifscCode,
     support_phone: validation.data.supportPhone,
     payment_instructions: validation.data.paymentInstructions,
-    updated_by: session.admin?.id || null,
+    updated_by: session.userId || null,
     updated_at: new Date().toISOString(),
   };
 
@@ -117,14 +126,21 @@ export async function updatePaymentSettingsAction(input: {
     if (error) return { success: false, error: 'Failed to create payment settings.' };
   }
 
-  await logAudit(supabase, { adminId: session.admin?.id, email: session.user?.email }, 'PAYMENT_SETTINGS_UPDATED', 'payment_settings', existing?.id || 'new', 'Super Admin updated payment settings.');
+  await logAudit(
+    supabase,
+    { collegeId: null, userId: session.userId, email: session.email },
+    'PAYMENT_SETTINGS_UPDATED',
+    'payment_settings',
+    existing?.id || 'new',
+    'Super Admin updated payment settings.'
+  );
 
   revalidatePath('/admin/dashboard');
   return { success: true };
 }
 
 // ====================================================================
-// SUBMIT PAYMENT REQUEST (Normal Admin)
+// SUBMIT PAYMENT REQUEST (Tenant College Admin)
 // ====================================================================
 
 export async function submitPaymentRequestAction(input: {
@@ -134,8 +150,15 @@ export async function submitPaymentRequestAction(input: {
   paymentProofUrl?: string | null;
 }) {
   const session = await getAdminSession();
-  if (!session.isAuthenticated || !session.isActive || !session.admin) {
+  if (!session.isAuthenticated || !session.isActive) {
     return { success: false, error: 'Unauthorized. Active admin session required.' };
+  }
+
+  // HARDENING RULE 3: collegeId is never an authorization credential.
+  // We establish authorized college strictly from authenticated session.
+  const collegeId = session.activeCollegeId;
+  if (!collegeId) {
+    return { success: false, error: 'No active college organization found for your account.' };
   }
 
   const validation = submitPaymentRequestSchema.safeParse(input);
@@ -160,65 +183,81 @@ export async function submitPaymentRequestAction(input: {
   }
 
   if (plan.price <= 0) {
-    return { success: false, error: 'Free plans cannot be self-selected. Contact the Super Admin.' };
+    return { success: false, error: 'Free plans cannot be purchased. Contact the Super Admin.' };
   }
 
-  const adminId = session.admin.id;
+  // Ensure college billing account exists
+  await ensureCollegeBillingAccount(collegeId);
 
-  // Ensure billing account exists
-  await ensureBillingAccount(adminId);
-
-  // Prevent duplicate PENDING requests
+  // Prevent duplicate PENDING requests for this college
   const { data: existingPending } = await supabase
-    .from('payment_requests')
+    .from('college_payment_requests')
     .select('id')
-    .eq('admin_user_id', adminId)
+    .eq('college_id', collegeId)
     .eq('status', 'PENDING')
     .maybeSingle();
 
   if (existingPending) {
-    return { success: false, error: 'You already have a pending payment request. Please wait for it to be reviewed by the Super Admin.' };
+    return {
+      success: false,
+      error: 'Your college already has a pending payment request. Please wait for Super Admin verification.',
+    };
   }
 
   const { data: newRequest, error } = await supabase
-    .from('payment_requests')
+    .from('college_payment_requests')
     .insert({
-      admin_user_id: adminId,
+      college_id: collegeId,
+      billing_plan_id: plan.id,
       plan_type: plan.slug,
       amount: plan.price,
       payment_method: paymentMethod,
       payment_reference: paymentReference.trim(),
       payment_proof_url: paymentProofUrl || null,
-      status: 'PENDING',
-      billing_plan_id: plan.id,
       snapshot_plan_name: plan.name,
       snapshot_billing_interval: plan.billing_interval,
+      status: 'PENDING',
+      submitted_by: session.userId,
     })
     .select('*')
     .single();
 
   if (error) {
-    console.error('[PAYMENT_REQUEST_CREATE]', error);
+    console.error('[COLLEGE_PAYMENT_REQUEST_CREATE]', error);
     return { success: false, error: 'Failed to submit payment request. Please try again.' };
   }
 
-  await logAudit(supabase, { adminId, email: session.user?.email }, 'PAYMENT_REQUEST_CREATED', 'payment_requests', newRequest.id, `Payment request submitted: ${plan.name} (${plan.slug}) plan, ₹${plan.price}, via ${paymentMethod}, UTR: ${paymentReference}`);
+  await logAudit(
+    supabase,
+    { collegeId, userId: session.userId, email: session.email },
+    'PAYMENT_REQUEST_CREATED',
+    'college_payment_requests',
+    newRequest.id,
+    `Payment request submitted: ${plan.name} (${plan.slug}) plan, ₹${plan.price}, via ${paymentMethod}, UTR: ${paymentReference}`
+  );
 
   revalidatePath('/admin/dashboard');
   return {
     success: true,
-    message: 'Payment request submitted successfully. Your payment will be manually verified within 24 hours.',
+    message: 'Payment request submitted successfully. It will be verified by the Super Admin.',
   };
 }
 
 // ====================================================================
-// UPLOAD PAYMENT PROOF (Normal Admin)
+// UPLOAD PAYMENT PROOF (Tenant College Storage)
 // ====================================================================
 
-export async function uploadPaymentProofAction(formData: FormData): Promise<{ success: boolean; url?: string; error?: string }> {
+export async function uploadPaymentProofAction(
+  formData: FormData
+): Promise<{ success: boolean; url?: string; error?: string }> {
   const session = await getAdminSession();
-  if (!session.isAuthenticated || !session.isActive || !session.admin) {
+  if (!session.isAuthenticated || !session.isActive) {
     return { success: false, error: 'Unauthorized.' };
+  }
+
+  const collegeId = session.activeCollegeId;
+  if (!collegeId) {
+    return { success: false, error: 'No active college organization found.' };
   }
 
   const file = formData.get('file') as File | null;
@@ -238,7 +277,8 @@ export async function uploadPaymentProofAction(formData: FormData): Promise<{ su
 
   const supabase = await getAdminDb();
   const ext = file.name.split('.').pop() || 'png';
-  const fileName = `${session.admin.id}/${Date.now()}.${ext}`;
+  // Enforce storage folder structure: <college_id>/<filename>
+  const fileName = `${collegeId}/${Date.now()}.${ext}`;
 
   let { data, error } = await supabase.storage
     .from('payment-proofs')
@@ -247,12 +287,11 @@ export async function uploadPaymentProofAction(formData: FormData): Promise<{ su
       upsert: false,
     });
 
-  // If the bucket doesn't exist yet, auto-create it as a private bucket and retry
-  if (error && (error.message?.includes('not found') || (error as any).statusCode === '404' || (error as any).statusCode === 404)) {
+  if (error && (error.message?.includes('not found') || (error as any).statusCode === 404)) {
     try {
       await supabase.storage.createBucket('payment-proofs', {
         public: false,
-        fileSizeLimit: 5242880, // 5MB
+        fileSizeLimit: 5242880,
         allowedMimeTypes: ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'],
       });
 
@@ -271,15 +310,14 @@ export async function uploadPaymentProofAction(formData: FormData): Promise<{ su
 
   if (error || !data) {
     console.error('[PAYMENT_PROOF_UPLOAD]', error);
-    return { success: false, error: error?.message || 'Failed to upload payment proof. Please try again.' };
+    return { success: false, error: error?.message || 'Failed to upload payment proof.' };
   }
 
-  // Return path (not public URL) — we generate signed URLs for authorized viewers
   return { success: true, url: data.path };
 }
 
 // ====================================================================
-// GET PAYMENT PROOF SIGNED URL (Admin who submitted or Super Admin)
+// GET PAYMENT PROOF SIGNED URL
 // ====================================================================
 
 export async function getPaymentProofUrlAction(proofPath: string) {
@@ -288,12 +326,13 @@ export async function getPaymentProofUrlAction(proofPath: string) {
     return { success: false, error: 'Unauthorized.' };
   }
 
-  // Only allow if Super Admin or the proof belongs to the requesting admin
-  const isSuperAdmin = session.isSuperAdmin;
-  const adminId = session.admin?.id;
-  const pathBelongsToAdmin = proofPath.startsWith(`${adminId}/`);
+  // Authorization check: Super Admin OR caller is an active member of target college folder
+  const folderCollegeId = proofPath.split('/')[0];
+  const isAuthorized =
+    session.isSuperAdmin ||
+    session.colleges.some((c) => c.collegeId === folderCollegeId && c.status === 'ACTIVE');
 
-  if (!isSuperAdmin && !pathBelongsToAdmin) {
+  if (!isAuthorized) {
     return { success: false, error: 'Access denied.' };
   }
 
@@ -326,9 +365,9 @@ export async function approvePaymentAction(requestId: string) {
 
     const supabase = await getAdminDb();
 
-    // Fetch payment request
+    // Fetch payment request from college_payment_requests
     const { data: payReq, error: fetchErr } = await supabase
-      .from('payment_requests')
+      .from('college_payment_requests')
       .select('*')
       .eq('id', requestId)
       .single();
@@ -341,9 +380,9 @@ export async function approvePaymentAction(requestId: string) {
       return { success: false, error: `This payment request has already been ${payReq.status.toLowerCase()}.` };
     }
 
-    // Validate amount: look up the plan from DB (by billing_plan_id or slug)
-    let expectedAmount = payReq.amount; // trust the snapshot by default
-    let durationDays = payReq.plan_type === 'MONTHLY' ? 30 : 365; // fallback
+    // Validate amount against billing_plans catalog
+    let expectedAmount = payReq.amount;
+    let durationDays = 30; // default
 
     if (payReq.billing_plan_id) {
       const { data: plan } = await supabase
@@ -356,7 +395,6 @@ export async function approvePaymentAction(requestId: string) {
         if (plan.duration_days) durationDays = plan.duration_days;
       }
     } else {
-      // Legacy: lookup by slug
       const { data: plan } = await supabase
         .from('billing_plans')
         .select('price, duration_days')
@@ -369,80 +407,78 @@ export async function approvePaymentAction(requestId: string) {
     }
 
     if (expectedAmount !== payReq.amount) {
-      return { success: false, error: `Amount mismatch. Expected ₹${expectedAmount} for ${payReq.plan_type} plan but request has ₹${payReq.amount}.` };
+      return {
+        success: false,
+        error: `Amount mismatch. Expected ₹${expectedAmount} for ${payReq.plan_type} plan but request has ₹${payReq.amount}.`,
+      };
     }
 
-    // Verify admin exists
-    const { data: targetAdmin, error: adminErr } = await supabase
-      .from('admins')
-      .select('id, email, name')
-      .eq('id', payReq.admin_user_id)
+    // Verify college exists
+    const { data: targetCollege, error: colErr } = await supabase
+      .from('colleges')
+      .select('id, name, code, slug')
+      .eq('id', payReq.college_id)
       .single();
 
-    if (adminErr || !targetAdmin) {
-      return { success: false, error: 'Target admin account not found.' };
+    if (colErr || !targetCollege) {
+      return { success: false, error: 'Target college not found.' };
     }
 
     const now = new Date();
     const expiresAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
 
-    // Transactional: update payment_request + billing account
+    // Update payment request
     const { error: updateReqErr } = await supabase
-      .from('payment_requests')
+      .from('college_payment_requests')
       .update({
         status: 'APPROVED',
-        reviewed_by: session.admin?.id || null,
+        reviewed_by: session.userId || null,
         reviewed_at: now.toISOString(),
         updated_at: now.toISOString(),
       })
       .eq('id', requestId)
-      .eq('status', 'PENDING'); // Prevent double-approval
+      .eq('status', 'PENDING');
 
     if (updateReqErr) {
       console.error('[APPROVE_PAYMENT_UPDATE_ERR]', updateReqErr);
       return { success: false, error: updateReqErr.message || 'Failed to update payment request.' };
     }
 
-    // Upsert billing account
-    await ensureBillingAccount(payReq.admin_user_id);
+    // Upsert / update college billing account
+    await ensureCollegeBillingAccount(payReq.college_id);
 
     const { error: billingErr } = await supabase
-      .from('admin_billing_accounts')
+      .from('college_billing_accounts')
       .update({
         plan_type: payReq.plan_type,
+        current_plan_id: payReq.billing_plan_id || null,
         access_status: 'UNLOCKED',
         subscription_status: 'ACTIVE',
         started_at: now.toISOString(),
         expires_at: expiresAt.toISOString(),
         updated_at: now.toISOString(),
       })
-      .eq('admin_user_id', payReq.admin_user_id);
+      .eq('college_id', payReq.college_id);
 
     if (billingErr) {
       console.error('[APPROVE_PAYMENT_BILLING_ERR]', billingErr);
-      return { success: false, error: billingErr.message || 'Payment approved but failed to update billing account. Please retry.' };
+      return { success: false, error: billingErr.message || 'Payment approved but failed to update college billing account.' };
     }
 
     await logAudit(
       supabase,
-      { adminId: session.admin?.id, email: session.user?.email },
+      { collegeId: payReq.college_id, userId: session.userId, email: session.email },
       'PAYMENT_APPROVED',
-      'payment_requests',
+      'college_payment_requests',
       requestId,
-      `Approved ${payReq.plan_type} payment for ${targetAdmin.email}. Amount: ₹${payReq.amount}. Valid until: ${expiresAt.toISOString()}`
-    );
-
-    await logAudit(
-      supabase,
-      { adminId: session.admin?.id, email: session.user?.email },
-      'ADMIN_FORM_ACCESS_UNLOCKED',
-      'admin_billing_accounts',
-      payReq.admin_user_id,
-      `Form generation access unlocked for ${targetAdmin.email} (${payReq.plan_type} plan).`
+      `Approved ${payReq.plan_type} payment for ${targetCollege.name} (${targetCollege.code}). Amount: ₹${payReq.amount}. Valid until: ${expiresAt.toISOString()}`
     );
 
     revalidatePath('/admin/dashboard');
-    return { success: true, message: `Payment approved. ${targetAdmin.email} is now UNLOCKED with ${payReq.plan_type} plan.` };
+    return {
+      success: true,
+      message: `Payment approved. ${targetCollege.name} is now UNLOCKED with ${payReq.plan_type} plan.`,
+    };
   } catch (err: any) {
     console.error('[APPROVE_PAYMENT_EXCEPTION]', err);
     return { success: false, error: err?.message || 'An unexpected error occurred while approving payment.' };
@@ -466,10 +502,9 @@ export async function rejectPaymentAction(requestId: string, rejectionReason?: s
 
     const supabase = await getAdminDb();
 
-    // Use explicit foreign key relationship payment_requests_admin_user_id_fkey to avoid PGRST201 ambiguity
     const { data: payReq, error: fetchErr } = await supabase
-      .from('payment_requests')
-      .select('*, admin:admins!payment_requests_admin_user_id_fkey(email, name)')
+      .from('college_payment_requests')
+      .select('*')
       .eq('id', requestId)
       .single();
 
@@ -482,10 +517,10 @@ export async function rejectPaymentAction(requestId: string, rejectionReason?: s
     }
 
     const { error } = await supabase
-      .from('payment_requests')
+      .from('college_payment_requests')
       .update({
         status: 'REJECTED',
-        reviewed_by: session.admin?.id || null,
+        reviewed_by: session.userId || null,
         reviewed_at: new Date().toISOString(),
         rejection_reason: rejectionReason?.trim() || null,
         updated_at: new Date().toISOString(),
@@ -498,14 +533,13 @@ export async function rejectPaymentAction(requestId: string, rejectionReason?: s
       return { success: false, error: error.message || 'Failed to reject payment request.' };
     }
 
-    const adminEmail = (payReq.admin as any)?.email || payReq.admin_user_id;
     await logAudit(
       supabase,
-      { adminId: session.admin?.id, email: session.user?.email },
+      { collegeId: payReq.college_id, userId: session.userId, email: session.email },
       'PAYMENT_REJECTED',
-      'payment_requests',
+      'college_payment_requests',
       requestId,
-      `Rejected ${payReq.plan_type} payment for ${adminEmail}. Reason: ${rejectionReason || 'Not specified'}`
+      `Rejected ${payReq.plan_type} payment for college ${payReq.college_id}. Reason: ${rejectionReason || 'Not specified'}`
     );
 
     revalidatePath('/admin/dashboard');
@@ -517,54 +551,62 @@ export async function rejectPaymentAction(requestId: string, rejectionReason?: s
 }
 
 // ====================================================================
-// SUPER ADMIN: ASSIGN FREE PLAN
+// SUPER ADMIN: ASSIGN FREE PLAN TO COLLEGE
 // ====================================================================
 
-export async function assignFreePlanAction(targetAdminId: string) {
+export async function assignFreePlanAction(targetCollegeId: string) {
   try {
     const session = await getAdminSession();
     if (!session.isAuthenticated || !session.isSuperAdmin) {
       return { success: false, error: 'Only the Super Admin can assign the Free plan.' };
     }
 
-    if (!isValidUUID(targetAdminId)) {
-      return { success: false, error: 'Invalid admin ID.' };
+    if (!isValidUUID(targetCollegeId)) {
+      return { success: false, error: 'Invalid college ID.' };
     }
 
     const supabase = await getAdminDb();
 
-    const { data: target } = await supabase
-      .from('admins')
-      .select('id, email, name')
-      .eq('id', targetAdminId)
+    const { data: college } = await supabase
+      .from('colleges')
+      .select('id, name, code')
+      .eq('id', targetCollegeId)
       .single();
 
-    if (!target) {
-      return { success: false, error: 'Admin not found.' };
+    if (!college) {
+      return { success: false, error: 'College not found.' };
     }
 
-    await ensureBillingAccount(targetAdminId);
+    await ensureCollegeBillingAccount(targetCollegeId);
 
     const { error } = await supabase
-      .from('admin_billing_accounts')
+      .from('college_billing_accounts')
       .update({
         plan_type: 'FREE',
+        current_plan_id: null,
         access_status: 'UNLOCKED',
         subscription_status: 'ACTIVE',
         started_at: new Date().toISOString(),
         expires_at: null,
         updated_at: new Date().toISOString(),
       })
-      .eq('admin_user_id', targetAdminId);
+      .eq('college_id', targetCollegeId);
 
     if (error) {
       return { success: false, error: error.message || 'Failed to assign Free plan.' };
     }
 
-    await logAudit(supabase, { adminId: session.admin?.id, email: session.user?.email }, 'FREE_PLAN_ASSIGNED', 'admin_billing_accounts', targetAdminId, `Free plan assigned to ${target.email} by Super Admin. Form generation access unlocked.`);
+    await logAudit(
+      supabase,
+      { collegeId: targetCollegeId, userId: session.userId, email: session.email },
+      'FREE_PLAN_ASSIGNED',
+      'college_billing_accounts',
+      targetCollegeId,
+      `Free plan assigned to ${college.name} (${college.code}) by Super Admin.`
+    );
 
     revalidatePath('/admin/dashboard');
-    return { success: true, message: `Free plan assigned to ${target.email}. Access is now UNLOCKED.` };
+    return { success: true, message: `Free plan assigned to ${college.name}. Access is UNLOCKED.` };
   } catch (err: any) {
     console.error('[ASSIGN_FREE_PLAN_EXCEPTION]', err);
     return { success: false, error: err?.message || 'An unexpected error occurred while assigning Free plan.' };
@@ -572,183 +614,194 @@ export async function assignFreePlanAction(targetAdminId: string) {
 }
 
 // ====================================================================
-// SUPER ADMIN: LOCK ADMIN ACCESS
+// SUPER ADMIN: LOCK COLLEGE ACCESS
 // ====================================================================
 
-export async function lockAdminAccessAction(targetAdminId: string) {
+export async function lockAdminAccessAction(targetCollegeId: string) {
   try {
     const session = await getAdminSession();
     if (!session.isAuthenticated || !session.isSuperAdmin) {
       return { success: false, error: 'Only the Super Admin can lock access.' };
     }
 
-    if (!isValidUUID(targetAdminId)) {
-      return { success: false, error: 'Invalid admin ID.' };
+    if (!isValidUUID(targetCollegeId)) {
+      return { success: false, error: 'Invalid college ID.' };
     }
 
     const supabase = await getAdminDb();
 
-    const { data: target } = await supabase
-      .from('admins')
-      .select('id, email, role')
-      .eq('id', targetAdminId)
+    const { data: college } = await supabase
+      .from('colleges')
+      .select('id, name, code')
+      .eq('id', targetCollegeId)
       .single();
 
-    if (!target) {
-      return { success: false, error: 'Admin not found.' };
+    if (!college) {
+      return { success: false, error: 'College not found.' };
     }
 
-    // Prevent locking Super Admin
-    if (target.role === 'SUPER_ADMIN' || target.email.toLowerCase().trim() === SUPER_ADMIN_EMAIL) {
-      return { success: false, error: 'The Super Admin account cannot be locked.' };
-    }
-
-    // Prevent self-lock
-    if (target.id === session.admin?.id) {
-      return { success: false, error: 'You cannot lock your own account.' };
-    }
-
-    await ensureBillingAccount(targetAdminId);
+    await ensureCollegeBillingAccount(targetCollegeId);
 
     const { error } = await supabase
-      .from('admin_billing_accounts')
+      .from('college_billing_accounts')
       .update({
         access_status: 'LOCKED',
         updated_at: new Date().toISOString(),
       })
-      .eq('admin_user_id', targetAdminId);
+      .eq('college_id', targetCollegeId);
 
     if (error) {
-      return { success: false, error: error.message || 'Failed to lock admin access.' };
+      return { success: false, error: error.message || 'Failed to lock college access.' };
     }
 
-    await logAudit(supabase, { adminId: session.admin?.id, email: session.user?.email }, 'ADMIN_FORM_ACCESS_LOCKED', 'admin_billing_accounts', targetAdminId, `Form generation access locked for ${target.email} by Super Admin.`);
+    await logAudit(
+      supabase,
+      { collegeId: targetCollegeId, userId: session.userId, email: session.email },
+      'COLLEGE_ACCESS_LOCKED',
+      'college_billing_accounts',
+      targetCollegeId,
+      `Access locked for college ${college.name} (${college.code}) by Super Admin.`
+    );
 
     revalidatePath('/admin/dashboard');
-    return { success: true, message: `Access locked for ${target.email}.` };
+    return { success: true, message: `Access locked for ${college.name}.` };
   } catch (err: any) {
-    console.error('[LOCK_ADMIN_ACCESS_EXCEPTION]', err);
+    console.error('[LOCK_COLLEGE_ACCESS_EXCEPTION]', err);
     return { success: false, error: err?.message || 'An unexpected error occurred while locking access.' };
   }
 }
 
 // ====================================================================
-// SUPER ADMIN: UNLOCK ADMIN ACCESS
+// SUPER ADMIN: UNLOCK COLLEGE ACCESS
 // ====================================================================
 
-export async function unlockAdminAccessAction(targetAdminId: string) {
+export async function unlockAdminAccessAction(targetCollegeId: string) {
   try {
     const session = await getAdminSession();
     if (!session.isAuthenticated || !session.isSuperAdmin) {
       return { success: false, error: 'Only the Super Admin can unlock access.' };
     }
 
-    if (!isValidUUID(targetAdminId)) {
-      return { success: false, error: 'Invalid admin ID.' };
+    if (!isValidUUID(targetCollegeId)) {
+      return { success: false, error: 'Invalid college ID.' };
     }
 
     const supabase = await getAdminDb();
 
-    const { data: target } = await supabase
-      .from('admins')
-      .select('id, email')
-      .eq('id', targetAdminId)
+    const { data: college } = await supabase
+      .from('colleges')
+      .select('id, name, code')
+      .eq('id', targetCollegeId)
       .single();
 
-    if (!target) {
-      return { success: false, error: 'Admin not found.' };
+    if (!college) {
+      return { success: false, error: 'College not found.' };
     }
 
-    await ensureBillingAccount(targetAdminId);
+    await ensureCollegeBillingAccount(targetCollegeId);
 
     const { error } = await supabase
-      .from('admin_billing_accounts')
+      .from('college_billing_accounts')
       .update({
         access_status: 'UNLOCKED',
         subscription_status: 'ACTIVE',
         updated_at: new Date().toISOString(),
       })
-      .eq('admin_user_id', targetAdminId);
+      .eq('college_id', targetCollegeId);
 
     if (error) {
-      return { success: false, error: error.message || 'Failed to unlock admin access.' };
+      return { success: false, error: error.message || 'Failed to unlock college access.' };
     }
 
-    await logAudit(supabase, { adminId: session.admin?.id, email: session.user?.email }, 'ADMIN_FORM_ACCESS_UNLOCKED', 'admin_billing_accounts', targetAdminId, `Form generation access unlocked for ${target.email} by Super Admin.`);
+    await logAudit(
+      supabase,
+      { collegeId: targetCollegeId, userId: session.userId, email: session.email },
+      'COLLEGE_ACCESS_UNLOCKED',
+      'college_billing_accounts',
+      targetCollegeId,
+      `Access unlocked for college ${college.name} (${college.code}) by Super Admin.`
+    );
 
     revalidatePath('/admin/dashboard');
-    return { success: true, message: `Access unlocked for ${target.email}.` };
+    return { success: true, message: `Access unlocked for ${college.name}.` };
   } catch (err: any) {
-    console.error('[UNLOCK_ADMIN_ACCESS_EXCEPTION]', err);
+    console.error('[UNLOCK_COLLEGE_ACCESS_EXCEPTION]', err);
     return { success: false, error: err?.message || 'An unexpected error occurred while unlocking access.' };
   }
 }
 
 // ====================================================================
-// SUPER ADMIN: REVOKE FORM ACCESS
+// SUPER ADMIN: REVOKE COLLEGE FORM ACCESS
 // ====================================================================
 
-export async function revokeFormAccessAction(targetAdminId: string) {
+export async function revokeFormAccessAction(targetCollegeId: string) {
   try {
     const session = await getAdminSession();
     if (!session.isAuthenticated || !session.isSuperAdmin) {
       return { success: false, error: 'Only the Super Admin can revoke access.' };
     }
 
-    if (!isValidUUID(targetAdminId)) {
-      return { success: false, error: 'Invalid admin ID.' };
+    if (!isValidUUID(targetCollegeId)) {
+      return { success: false, error: 'Invalid college ID.' };
     }
 
     const supabase = await getAdminDb();
 
-    const { data: target } = await supabase
-      .from('admins')
-      .select('id, email, role')
-      .eq('id', targetAdminId)
+    const { data: college } = await supabase
+      .from('colleges')
+      .select('id, name, code')
+      .eq('id', targetCollegeId)
       .single();
 
-    if (!target) {
-      return { success: false, error: 'Admin not found.' };
+    if (!college) {
+      return { success: false, error: 'College not found.' };
     }
 
-    if (target.role === 'SUPER_ADMIN' || target.email.toLowerCase().trim() === SUPER_ADMIN_EMAIL) {
-      return { success: false, error: 'The Super Admin account cannot be revoked.' };
-    }
-
-    if (target.id === session.admin?.id) {
-      return { success: false, error: 'You cannot revoke your own access.' };
-    }
-
-    await ensureBillingAccount(targetAdminId);
+    await ensureCollegeBillingAccount(targetCollegeId);
 
     const { error } = await supabase
-      .from('admin_billing_accounts')
+      .from('college_billing_accounts')
       .update({
         access_status: 'LOCKED',
         subscription_status: 'CANCELLED',
         updated_at: new Date().toISOString(),
       })
-      .eq('admin_user_id', targetAdminId);
+      .eq('college_id', targetCollegeId);
 
     if (error) {
       return { success: false, error: error.message || 'Failed to revoke access.' };
     }
 
-    await logAudit(supabase, { adminId: session.admin?.id, email: session.user?.email }, 'ACCESS_REVOKED', 'admin_billing_accounts', targetAdminId, `Form generation access revoked for ${target.email} by Super Admin.`);
+    await logAudit(
+      supabase,
+      { collegeId: targetCollegeId, userId: session.userId, email: session.email },
+      'COLLEGE_ACCESS_REVOKED',
+      'college_billing_accounts',
+      targetCollegeId,
+      `Access revoked for college ${college.name} (${college.code}) by Super Admin.`
+    );
 
     revalidatePath('/admin/dashboard');
-    return { success: true, message: `Access revoked for ${target.email}.` };
+    return { success: true, message: `Access revoked for ${college.name}.` };
   } catch (err: any) {
-    console.error('[REVOKE_FORM_ACCESS_EXCEPTION]', err);
+    console.error('[REVOKE_COLLEGE_ACCESS_EXCEPTION]', err);
     return { success: false, error: err?.message || 'An unexpected error occurred while revoking access.' };
   }
 }
 
 // ====================================================================
-// SUPER ADMIN: BILLING OVERVIEW
+// SUPER ADMIN: COLLEGE-LEVEL BILLING OVERVIEW
 // ====================================================================
 
-export async function getAdminBillingOverviewAction() {
+/**
+ * HARDENING RULE 2: Billing Overview is COLLEGE-level, not admin-user-level.
+ * Super Admin sees colleges and their billing state.
+ */
+export async function getAdminBillingOverviewAction(): Promise<{
+  success: boolean;
+  error?: string;
+  data: BillingOverviewItem[];
+}> {
   const session = await getAdminSession();
   if (!session.isAuthenticated || !session.isSuperAdmin) {
     return { success: false, error: 'Only the Super Admin can view billing overview.', data: [] };
@@ -756,96 +809,124 @@ export async function getAdminBillingOverviewAction() {
 
   const supabase = await getAdminDb();
 
-  // Get all admins with their billing records and latest payment requests
-  const { data: admins, error: adminsErr } = await supabase
-    .from('admins')
-    .select('id, email, name, role, status, created_at')
+  // 1. Fetch all colleges
+  const { data: colleges, error: collegesErr } = await supabase
+    .from('colleges')
+    .select('id, name, code, slug, is_active, created_at')
     .order('created_at', { ascending: false });
 
-  if (adminsErr || !admins) {
-    return { success: false, error: 'Failed to load admins.', data: [] };
+  if (collegesErr || !colleges) {
+    return { success: false, error: 'Failed to load colleges.', data: [] };
   }
 
-  const { data: billingRecords } = await supabase
-    .from('admin_billing_accounts')
-    .select('*');
+  // 2. Concurrently fetch all college billing accounts, payment requests, trials, and memberships
+  const [billingRes, requestsRes, trialsRes, membersRes] = await Promise.all([
+    supabase.from('college_billing_accounts').select('*'),
+    supabase.from('college_payment_requests').select('*').order('created_at', { ascending: false }),
+    supabase.from('college_trial_entitlements').select('*').order('created_at', { ascending: false }),
+    supabase.from('college_memberships').select('college_id, user_id, role, status').eq('status', 'ACTIVE'),
+  ]);
 
-  const { data: paymentRequests } = await supabase
-    .from('payment_requests')
-    .select('*')
-    .order('created_at', { ascending: false });
+  const billingRecords = billingRes.data || [];
+  const paymentRequests = requestsRes.data || [];
+  const trialRecords = trialsRes.data || [];
+  const memberships = membersRes.data || [];
 
-  const { data: trialRecords } = await supabase
-    .from('admin_trial_entitlements')
-    .select(`
-      *,
-      granter:admins!admin_trial_entitlements_granted_by_fkey(id, email, name),
-      revoker:admins!admin_trial_entitlements_revoked_by_fkey(id, email, name)
-    `)
-    .order('created_at', { ascending: false });
+  const billingMap = new Map((billingRecords || []).map((b: any) => [b.college_id, b]));
+  const requestsMap = new Map<string, CollegePaymentRequest[]>();
+  const trialsMap = new Map<string, CollegeTrialEntitlement[]>();
+  const membersCountMap = new Map<string, number>();
 
-  const billingMap = new Map((billingRecords || []).map((b: any) => [b.admin_user_id, b]));
-  const requestsMap = new Map<string, any[]>();
-  const trialsMap = new Map<string, any[]>();
-
-  for (const req of (paymentRequests || []) as any[]) {
-    if (!requestsMap.has(req.admin_user_id)) {
-      requestsMap.set(req.admin_user_id, []);
+  for (const req of (paymentRequests || []) as CollegePaymentRequest[]) {
+    if (!requestsMap.has(req.college_id)) {
+      requestsMap.set(req.college_id, []);
     }
-    requestsMap.get(req.admin_user_id)!.push(req);
+    requestsMap.get(req.college_id)!.push(req);
   }
 
-  for (const trial of (trialRecords || []) as any[]) {
-    if (!trialsMap.has(trial.admin_id)) {
-      trialsMap.set(trial.admin_id, []);
+  for (const trial of (trialRecords || []) as CollegeTrialEntitlement[]) {
+    if (!trialsMap.has(trial.college_id)) {
+      trialsMap.set(trial.college_id, []);
     }
-    trialsMap.get(trial.admin_id)!.push(trial);
+    trialsMap.get(trial.college_id)!.push(trial);
+  }
+
+  for (const m of memberships as any[]) {
+    membersCountMap.set(m.college_id, (membersCountMap.get(m.college_id) || 0) + 1);
   }
 
   const now = new Date();
 
-  const overview = admins.map((admin: any) => {
-    const billing = billingMap.get(admin.id) as AdminBillingAccount | undefined;
-    const requests = (requestsMap.get(admin.id) || []) as PaymentRequest[];
+  const overview: BillingOverviewItem[] = colleges.map((col: any) => {
+    const billing = billingMap.get(col.id) as CollegeBillingAccount | undefined;
+    const requests = requestsMap.get(col.id) || [];
     const latestRequest = requests[0] || null;
-    const adminTrials = (trialsMap.get(admin.id) || []) as any[];
+    const collegeTrials = trialsMap.get(col.id) || [];
 
-    // Active trial: status = ACTIVE, starts_at <= now, now < expires_at
-    const activeTrial = adminTrials.find(
+    // Active trial check: status = ACTIVE, starts_at <= now, now < expires_at
+    const activeTrial = collegeTrials.find(
       (t) => t.status === 'ACTIVE' && new Date(t.starts_at) <= now && new Date(t.expires_at) > now
     ) || null;
 
+    const membersCount = membersCountMap.get(col.id) || 0;
+
     return {
-      admin,
+      college: {
+        id: col.id,
+        name: col.name,
+        code: col.code,
+        slug: col.slug,
+        is_active: col.is_active,
+        created_at: col.created_at,
+      },
+      // UI compatibility admin bridge
+      admin: {
+        id: col.id,
+        user_id: col.id,
+        name: col.name,
+        email: `${col.code.toLowerCase()}@platform.local`,
+        role: 'ADMIN',
+        status: col.is_active ? 'ACTIVE' : 'INACTIVE',
+        created_at: col.created_at,
+      },
       billing: billing || null,
       latestPaymentRequest: latestRequest,
       paymentRequests: requests,
       activeTrial,
-      trialHistory: adminTrials,
+      trialHistory: collegeTrials,
+      membersCount,
     };
   });
 
   return { success: true, data: overview };
 }
 
+// Alias
+export const getCollegeBillingOverviewAction = getAdminBillingOverviewAction;
+
 // ====================================================================
-// GET ADMIN BILLING STATUS (for own UI)
+// GET CURRENT TENANT BILLING STATUS (Tenant UI)
 // ====================================================================
 
 export async function getMyBillingStatusAction() {
   const session = await getAdminSession();
-  if (!session.isAuthenticated || !session.isActive || !session.admin) {
+  if (!session.isAuthenticated || !session.isActive) {
     return { success: false, error: 'Unauthorized.' };
   }
 
-  const billingStatus = await getAdminBillingStatus(session.admin.id);
+  const collegeId = session.activeCollegeId;
+  if (!collegeId) {
+    return { success: false, error: 'No active college selected.' };
+  }
 
-  // Also fetch latest payment request for status display
+  const billingStatus = await getCollegeBillingStatus(collegeId);
+
+  // Fetch latest payment request from college_payment_requests
   const supabase = await getAdminDb();
   const { data: latestRequest } = await supabase
-    .from('payment_requests')
+    .from('college_payment_requests')
     .select('*')
-    .eq('admin_user_id', session.admin.id)
+    .eq('college_id', collegeId)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -859,7 +940,7 @@ export async function getMyBillingStatusAction() {
       hasFullAnalytics,
     },
     hasFullAnalytics,
-    latestPaymentRequest: latestRequest as PaymentRequest | null,
+    latestPaymentRequest: latestRequest as CollegePaymentRequest | null,
     isSuperAdmin: session.isSuperAdmin,
   };
 }
@@ -870,12 +951,7 @@ export async function checkAnalyticsAccessAction() {
     return { allowed: false, isSuperAdmin: false, reason: 'Unauthorized.' };
   }
 
-  const result = await assertAnalyticsAccess(
-    session.admin?.id,
-    session.admin?.email || session.user?.email,
-    session.admin?.role,
-    session.admin?.status
-  );
+  const result = await assertAnalyticsAccess(session);
 
   return {
     allowed: result.allowed,
@@ -885,4 +961,3 @@ export async function checkAnalyticsAccessAction() {
     billingStatus: result.billingStatus,
   };
 }
-

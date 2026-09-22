@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { getAdminSession } from '@/lib/auth/admin-auth';
 import { AdminHeaderSignOut } from '@/components/admin/AdminHeaderSignOut';
+import { TenantSwitcher } from './components/TenantSwitcher';
 import { School, ShieldCheck, UserCheck, ArrowLeft } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -31,7 +32,7 @@ export default async function AdminDashboardLayout({
           </div>
           <h2 className="text-xl font-bold">Access Restricted</h2>
           <p className="text-xs text-slate-300">
-            Your administrator account is currently marked as <strong>INACTIVE</strong>. Please contact the Super Admin for activation.
+            Your administrator account is currently marked as <strong>INACTIVE</strong> or has no institutional memberships. Please contact the Super Admin for activation.
           </p>
           <div className="pt-2">
             <AdminHeaderSignOut />
@@ -41,9 +42,10 @@ export default async function AdminDashboardLayout({
     );
   }
 
-  const isSuper = session.isSuperAdmin;
-  const adminName = session.admin?.name || session.user?.name || 'Administrator';
-  const adminEmail = session.admin?.email || session.user?.email || '';
+  const isSuper = session.isPlatformSuperAdmin;
+  const adminName = session.name || 'Administrator';
+  const adminEmail = session.email || '';
+  const activeCollege = session.activeCollege;
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-100 text-slate-900 w-full max-w-full overflow-x-hidden">
@@ -57,19 +59,25 @@ export default async function AdminDashboardLayout({
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 sm:gap-2">
                 <span className="font-bold text-xs sm:text-base tracking-tight text-white truncate">
-                  BCE Feedback
+                  {activeCollege ? activeCollege.code : 'FMS'} Feedback
                 </span>
                 <span className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
                   Admin
                 </span>
               </div>
               <p className="text-[10px] sm:text-[11px] text-slate-400 truncate hidden sm:block">
-                Bhagalpur College of Engineering
+                Active College: {activeCollege ? activeCollege.name : 'Select Institution'}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-4 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+            {/* Multi-Tenant Switcher */}
+            <TenantSwitcher
+              colleges={session.colleges}
+              activeCollegeId={session.activeCollegeId}
+              isPlatformSuperAdmin={session.isPlatformSuperAdmin}
+            />
             {/* User Profile Badge */}
             <div className="hidden sm:flex flex-col items-end text-right">
               <div className="flex items-center gap-1.5">

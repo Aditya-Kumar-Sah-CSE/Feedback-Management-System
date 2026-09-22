@@ -23,12 +23,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ─── BILLING ACCESS GATE ────────────────────────────────────────
-  const accessResult = await assertFormGenerationAccess(
-    session.admin?.id,
-    session.admin?.email || session.user?.email,
-    session.admin?.role,
-    session.admin?.status,
-  );
+  const accessResult = await assertFormGenerationAccess(session);
   if (!accessResult.allowed) {
     return NextResponse.json({ error: accessResult.reason }, { status: 403 });
   }

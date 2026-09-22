@@ -1,4 +1,4 @@
-import { executeWithGoogleOAuthRetry } from './auth';
+import { executeWithCollegeGoogleOAuthRetry } from './auth';
 import {
   buildCreateQuestionsBatchUpdateRequest,
   buildMultiFacultyGridBatchUpdateRequest,
@@ -19,14 +19,15 @@ export interface CreateFormResult {
  * - Multi-faculty Multiple Choice Grids (SEMESTER_FEEDBACK) if items are provided, or
  * - The standard 8 BCE evaluation questions (FACULTY_FEEDBACK)
  *
- * Automatically hydrates credentials from persistent Supabase storage with single-retry OAuth resilience.
+ * Authenticates using the institutional Google connection of collegeId.
  */
 export async function createGoogleFeedbackForm(params: {
+  collegeId: string;
   title: string;
   description: string;
   items?: MultiFacultyGridItem[];
 }): Promise<CreateFormResult> {
-  return executeWithGoogleOAuthRetry(async ({ forms }) => {
+  return executeWithCollegeGoogleOAuthRetry(params.collegeId, async ({ forms }) => {
     // 1. Create the Form container
     const createRes = await forms.forms.create({
       requestBody: {
@@ -92,20 +93,20 @@ export async function createGoogleFeedbackForm(params: {
 }
 
 /**
- * Retrieves Google Form details and questions
+ * Retrieves Google Form details and questions for a specific college
  */
-export async function getGoogleForm(formId: string) {
-  return executeWithGoogleOAuthRetry(async ({ forms }) => {
+export async function getGoogleForm(formId: string, collegeId: string) {
+  return executeWithCollegeGoogleOAuthRetry(collegeId, async ({ forms }) => {
     const res = await forms.forms.get({ formId });
     return res.data;
   });
 }
 
 /**
- * Retrieves all submitted responses from Google Forms API
+ * Retrieves all submitted responses from Google Forms API for a specific college
  */
-export async function getGoogleFormResponses(formId: string) {
-  return executeWithGoogleOAuthRetry(async ({ forms }) => {
+export async function getGoogleFormResponses(formId: string, collegeId: string) {
+  return executeWithCollegeGoogleOAuthRetry(collegeId, async ({ forms }) => {
     const res = await forms.forms.responses.list({ formId });
     return res.data.responses || [];
   });
@@ -113,19 +114,13 @@ export async function getGoogleFormResponses(formId: string) {
 
 /**
  * Validates the actual generated Google Forms structure after creation
- * to confirm that:
- * 1. Verified email collection is active
- * 2. Student Name is required
- * 3. University Registration Number is required
- * 4. Rating questions (or every row of every multi-faculty grid) are strictly required
- * 5. General Feedback remains optional
  */
-export async function validateGoogleFormRequiredStructure(formId: string): Promise<{
+export async function validateGoogleFormRequiredStructure(formId: string, collegeId: string): Promise<{
   isValid: boolean;
   errors: string[];
   form: any;
 }> {
-  const form = await getGoogleForm(formId);
+  const form = await getGoogleForm(formId, collegeId);
   const errors: string[] = [];
 
   const emailCollection = (form.settings as any)?.emailCollectionType;

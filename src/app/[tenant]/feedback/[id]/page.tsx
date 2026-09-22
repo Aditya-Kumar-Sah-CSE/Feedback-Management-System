@@ -1,0 +1,124 @@
+import Link from 'next/link';
+import { resolveTenantOrNotFound } from '@/lib/tenant/resolver';
+import { getPublicFeedbackFormByIdAction } from '@/app/feedback/actions';
+import { PublicFeedbackCard } from '@/components/public/PublicFeedbackCard';
+import { School, ArrowLeft, ShieldCheck, AlertCircle } from 'lucide-react';
+
+export const dynamic = 'force-dynamic';
+
+interface TenantDirectFeedbackPageProps {
+  params: Promise<{
+    tenant: string;
+    id: string;
+  }>;
+}
+
+export default async function TenantDirectFeedbackPage({
+  params,
+}: TenantDirectFeedbackPageProps) {
+  const { tenant: rawSlug, id } = await params;
+  const tenant = await resolveTenantOrNotFound(rawSlug);
+
+  // Validates form belongs to the resolved tenant college_id
+  const result = await getPublicFeedbackFormByIdAction(id, tenant.collegeId);
+
+  return (
+    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
+      {/* Top Banner */}
+      <div className="bg-slate-900 text-white text-[11px] sm:text-xs py-1.5 sm:py-2 px-3 sm:px-4 border-b border-slate-800">
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-1 sm:gap-2 text-center sm:text-left">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+            <span className="truncate">Feedback Management System • {tenant.name}</span>
+          </div>
+          <Link
+            href={`/${tenant.slug}/feedback`}
+            className="text-slate-300 hover:text-white flex items-center gap-1 text-[10px] sm:text-xs shrink-0"
+          >
+            <ArrowLeft className="w-3 h-3" /> All {tenant.shortName} Forms
+          </Link>
+        </div>
+      </div>
+
+      {/* Header */}
+      <header className="bg-white border-b border-slate-200 shadow-xs sticky top-0 z-30">
+        <div className="max-w-4xl mx-auto px-3.5 sm:px-6 lg:px-8 py-2.5 sm:py-3.5 flex justify-between items-center gap-2">
+          <Link href={`/${tenant.slug}`} className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-slate-900 to-blue-900 text-amber-400 flex items-center justify-center font-bold text-base sm:text-lg shadow-md border border-slate-800 shrink-0">
+              <School className="w-5 h-5 text-amber-400" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-sm sm:text-lg font-bold tracking-tight text-slate-900 truncate">
+                {tenant.name}
+              </h1>
+              <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium truncate">
+                Official Student Feedback Portal ({tenant.shortName})
+              </p>
+            </div>
+          </Link>
+
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 px-2.5 sm:px-3 py-1.5 rounded-full border border-emerald-200 shrink-0">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>100% Anonymous</span>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="flex-1 max-w-4xl mx-auto w-full px-3.5 sm:px-6 lg:px-8 py-6 sm:py-10 space-y-6">
+        <div>
+          <Link
+            href={`/${tenant.slug}/feedback`}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-600 mb-3 transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Back to {tenant.shortName} Feedback Discovery</span>
+          </Link>
+          <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+            Direct Faculty Evaluation Link
+          </h2>
+          <p className="text-xs text-slate-500 mt-1">
+            Official feedback form designated for {tenant.shortName} course curriculum.
+          </p>
+        </div>
+
+        {!result.success || !result.form ? (
+          <div className="bg-white rounded-2xl p-10 border border-slate-200 text-center space-y-4 shadow-xs">
+            <div className="w-12 h-12 rounded-full bg-red-50 text-red-600 mx-auto flex items-center justify-center">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-slate-900">Feedback Form Unavailable</h3>
+              <p className="text-xs text-slate-600 max-w-md mx-auto leading-relaxed">
+                {result.message || 'This feedback form is no longer available or does not belong to this institution.'}
+              </p>
+            </div>
+            <div className="pt-2">
+              <Link
+                href={`/${tenant.slug}/feedback`}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-colors"
+              >
+                <span>Browse {tenant.shortName} Feedback Forms</span>
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <PublicFeedbackCard
+            form={result.form}
+            isClosed={result.status === 'CLOSED'}
+          />
+        )}
+      </main>
+
+      {/* Footer */}
+      <footer className="bg-slate-900 text-slate-400 text-xs py-6 px-4 border-t border-slate-800 mt-auto">
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3 text-center sm:text-left">
+          <span>{tenant.name} ({tenant.shortName}) • Official Student Evaluation Portal</span>
+          <Link href={`/${tenant.slug}/admin/login`} className="text-amber-400 hover:underline">
+            Admin Login
+          </Link>
+        </div>
+      </footer>
+    </div>
+  );
+}

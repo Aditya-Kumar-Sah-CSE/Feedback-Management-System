@@ -148,7 +148,7 @@ export async function getFormResponsesAction(
   // 1. Fetch form metadata
   const { data: form } = await supabase
     .from('feedback_forms')
-    .select('id, title, form_type, google_form_id, google_sheet_id, google_form_url, google_sheet_url')
+    .select('id, college_id, title, form_type, google_form_id, google_sheet_id, google_form_url, google_sheet_url')
     .eq('id', formId)
     .maybeSingle();
 
@@ -164,6 +164,27 @@ export async function getFormResponsesAction(
       formType: '',
       error: 'Form not found.',
     };
+  }
+
+  // Tenant authorization check
+  if (!session.isPlatformSuperAdmin) {
+    const hasMembership = session.colleges.some(
+      (c) => c.collegeId === form.college_id && c.status === 'ACTIVE'
+    );
+    if (!hasMembership) {
+      return {
+        success: false,
+        responses: [],
+        totalCount: 0,
+        page: 1,
+        pageSize: validPageSize,
+        totalPages: 0,
+        formTitle: '',
+        formType: '',
+        code: 'FORBIDDEN',
+        error: 'Access denied. You do not have permission to view responses for this form.',
+      };
+    }
   }
 
   // 2. Auto-sync if records table is empty but Google is configured
@@ -312,6 +333,7 @@ export async function getResponseDetailAction(
     .from('feedback_forms')
     .select(`
       id,
+      college_id,
       title,
       form_type,
       google_sheet_id,
@@ -332,6 +354,20 @@ export async function getResponseDetailAction(
     return { success: false, error: 'Feedback form not found.' };
   }
 
+  // Tenant authorization check
+  if (!session.isPlatformSuperAdmin) {
+    const hasMembership = session.colleges.some(
+      (c) => c.collegeId === form.college_id && c.status === 'ACTIVE'
+    );
+    if (!hasMembership) {
+      return {
+        success: false,
+        error: 'Access denied. You do not have permission to view responses for this form.',
+        code: 'FORBIDDEN',
+      };
+    }
+  }
+
   const sheetId =
     form.google_sheet_id ||
     form.google_sheet_url?.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/)?.[1];
@@ -340,7 +376,7 @@ export async function getResponseDetailAction(
     return { success: false, error: 'Connected Google Sheet not found.' };
   }
 
-  const sheetData = await fetchSingleResponseFromSheet(sheetId, responseId);
+  const sheetData = await fetchSingleResponseFromSheet(sheetId, responseId, form.college_id);
   if (!sheetData) {
     return { success: false, error: 'Response record not found in Google Sheet.' };
   }

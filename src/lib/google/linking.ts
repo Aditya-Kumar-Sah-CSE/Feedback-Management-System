@@ -1,5 +1,5 @@
 import { FORM_CONFIRMATION_MESSAGE } from './template';
-import { executeWithGoogleOAuthRetry, ensureGoogleCredentialsLoaded } from './auth';
+import { executeWithCollegeGoogleOAuthRetry } from './auth';
 
 export interface LinkingResult {
   success: boolean;
@@ -19,14 +19,15 @@ export interface ConfigurationResult {
 /**
  * Ensures the Google Apps Script execution account has writer access to
  * the Google Drive file (Form or Sheet) before invoking the Apps Script Web App.
+ * Access is granted using the institutional Google connection of the specified college.
  */
-async function ensureWriterAccess(fileId: string): Promise<void> {
+async function ensureWriterAccess(fileId: string, collegeId: string): Promise<void> {
   const runnerEmail =
     process.env.GOOGLE_APPS_SCRIPT_RUNNER_EMAIL || 'iamsmartlearner4@gmail.com';
-  if (!runnerEmail || !fileId) return;
+  if (!runnerEmail || !fileId || !collegeId) return;
 
   try {
-    await executeWithGoogleOAuthRetry(async ({ drive }) => {
+    await executeWithCollegeGoogleOAuthRetry(collegeId, async ({ drive }) => {
       await drive.permissions.create({
         fileId,
         requestBody: {
@@ -53,9 +54,9 @@ async function ensureWriterAccess(fileId: string): Promise<void> {
 export async function linkFormToSpreadsheet(
   formId: string,
   sheetId: string,
-  confirmationMessage: string = FORM_CONFIRMATION_MESSAGE
+  confirmationMessage: string = FORM_CONFIRMATION_MESSAGE,
+  collegeId?: string
 ): Promise<LinkingResult> {
-  await ensureGoogleCredentialsLoaded();
   const scriptUrl = process.env.GOOGLE_APPS_SCRIPT_URL;
   const scriptSecret = process.env.GOOGLE_APPS_SCRIPT_SECRET;
 
@@ -70,10 +71,12 @@ export async function linkFormToSpreadsheet(
   }
 
   try {
-    await Promise.allSettled([
-      ensureWriterAccess(formId),
-      ensureWriterAccess(sheetId),
-    ]);
+    if (collegeId) {
+      await Promise.allSettled([
+        ensureWriterAccess(formId, collegeId),
+        ensureWriterAccess(sheetId, collegeId),
+      ]);
+    }
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 12000); // 12s timeout
 
@@ -143,7 +146,8 @@ export async function linkFormToSpreadsheet(
  */
 export async function configureGoogleFormConfirmation(
   formId: string,
-  confirmationMessage: string = FORM_CONFIRMATION_MESSAGE
+  confirmationMessage: string = FORM_CONFIRMATION_MESSAGE,
+  collegeId?: string
 ): Promise<ConfigurationResult> {
   const scriptUrl = process.env.GOOGLE_APPS_SCRIPT_URL;
   const scriptSecret = process.env.GOOGLE_APPS_SCRIPT_SECRET;
@@ -168,7 +172,9 @@ export async function configureGoogleFormConfirmation(
   }
 
   try {
-    await ensureWriterAccess(formId);
+    if (collegeId) {
+      await ensureWriterAccess(formId, collegeId);
+    }
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 12000);
 

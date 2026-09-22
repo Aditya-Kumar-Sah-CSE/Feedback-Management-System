@@ -9,7 +9,6 @@ import {
   Lock,
   Unlock,
   Gift,
-  Shield,
   RefreshCw,
   Eye,
   ChevronDown,
@@ -43,7 +42,7 @@ import { TrialHistoryModal } from '@/components/admin/billing/TrialHistoryModal'
 import { ReplaceTrialModal } from '@/components/admin/billing/ReplaceTrialModal';
 import type { PaymentSettings, Admin, AdminTrialEntitlement, BillingOverviewItem } from '@/types/database';
 
-export function BillingManagementTab({ currentUserEmail }: { currentUserEmail: string }) {
+export function BillingManagementTab({ currentUserEmail: _currentUserEmail }: { currentUserEmail?: string }) {
   const [data, setData] = useState<BillingOverviewItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -207,7 +206,7 @@ export function BillingManagementTab({ currentUserEmail }: { currentUserEmail: s
             <CreditCard className="w-5 h-5 text-bce-cobalt shrink-0" />
             <span>Billing & Access Management</span>
           </h2>
-          <p className="text-xs text-slate-500 mt-0.5">{data.length} admins total</p>
+          <p className="text-xs text-slate-500 mt-0.5">{data.length} colleges total</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={() => setShowSettings(!showSettings)} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition cursor-pointer">
@@ -360,7 +359,7 @@ export function BillingManagementTab({ currentUserEmail }: { currentUserEmail: s
           <table className="w-full text-xs">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="text-left px-4 py-3 font-semibold text-slate-600">Admin</th>
+                <th className="text-left px-4 py-3 font-semibold text-slate-600">College Tenant</th>
                 <th className="text-left px-4 py-3 font-semibold text-slate-600">Access</th>
                 <th className="text-left px-4 py-3 font-semibold text-slate-600">Billing Plan</th>
                 <th className="text-left px-4 py-3 font-semibold text-slate-600">Trial</th>
@@ -371,25 +370,29 @@ export function BillingManagementTab({ currentUserEmail }: { currentUserEmail: s
             </thead>
             <tbody className="divide-y divide-slate-100">
               {data.map(item => {
-                const isOwnRow = item.admin.email?.toLowerCase() === currentUserEmail.toLowerCase();
-                const isSuperAdminRow = item.admin.role === 'SUPER_ADMIN';
-                const isExpanded = expandedAdmin === item.admin.id;
+                const isExpanded = expandedAdmin === item.college.id;
                 const accessStatus = item.billing?.access_status || 'LOCKED';
                 const planType = item.billing?.plan_type || 'FREE';
                 const latestReq = item.latestPaymentRequest;
                 const activeTrial = item.activeTrial;
+                const isOwnRow = false;
+                const isSuperAdminRow = false;
 
                 return (
-                  <tr key={item.admin.id} className={`${isExpanded ? 'bg-slate-50/50' : 'hover:bg-slate-50/50'} transition-colors`}>
-                    {/* 1. Admin Info */}
+                  <tr key={item.college.id} className={`${isExpanded ? 'bg-slate-50/50' : 'hover:bg-slate-50/50'} transition-colors`}>
+                    {/* 1. College Info */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <div>
-                          <p className="font-semibold text-slate-800 flex items-center gap-1">
-                            {item.admin.name}
-                            {isSuperAdminRow && <Shield className="w-3 h-3 text-amber-500" />}
+                          <p className="font-semibold text-slate-800 flex items-center gap-1.5">
+                            <span>{item.college.name}</span>
+                            <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded border border-slate-200">
+                              {item.college.code}
+                            </span>
                           </p>
-                          <p className="text-slate-400 font-mono text-[10px]">{item.admin.email}</p>
+                          <p className="text-slate-400 font-mono text-[10px]">
+                            {item.membersCount || 0} admins · /c/{item.college.slug}
+                          </p>
                         </div>
                       </div>
                     </td>
@@ -519,14 +522,14 @@ export function BillingManagementTab({ currentUserEmail }: { currentUserEmail: s
                             <>
                               <button
                                 disabled={confirmLoading}
-                                onClick={() => openConfirmModal({ type: 'APPROVE', adminId: item.admin.id, adminEmail: item.admin.email, requestId: latestReq.id })}
+                                onClick={() => openConfirmModal({ type: 'APPROVE', adminId: item.college.id, adminEmail: item.college.name, requestId: latestReq.id })}
                                 className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition disabled:opacity-50 cursor-pointer"
                               >
                                 <CheckCircle2 className="w-3 h-3" /> Approve
                               </button>
                               <button
                                 disabled={confirmLoading}
-                                onClick={() => openConfirmModal({ type: 'REJECT', adminId: item.admin.id, adminEmail: item.admin.email, requestId: latestReq.id })}
+                                onClick={() => openConfirmModal({ type: 'REJECT', adminId: item.college.id, adminEmail: item.college.name, requestId: latestReq.id })}
                                 className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium bg-red-100 text-red-700 hover:bg-red-200 transition disabled:opacity-50 cursor-pointer"
                               >
                                 <XCircle className="w-3 h-3" /> Reject
@@ -537,7 +540,7 @@ export function BillingManagementTab({ currentUserEmail }: { currentUserEmail: s
                           {/* View proof */}
                           {latestReq?.payment_proof_url && (
                             <button
-                              onClick={() => handleViewProof(latestReq.payment_proof_url!)}
+                               onClick={() => handleViewProof(latestReq.payment_proof_url!)}
                               className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition cursor-pointer"
                             >
                               <Eye className="w-3 h-3" /> Proof
@@ -549,14 +552,14 @@ export function BillingManagementTab({ currentUserEmail }: { currentUserEmail: s
                             <>
                               <button
                                 disabled={confirmLoading}
-                                onClick={() => openConfirmModal({ type: 'UNLOCK', adminId: item.admin.id, adminEmail: item.admin.email })}
+                                onClick={() => openConfirmModal({ type: 'UNLOCK', adminId: item.college.id, adminEmail: item.college.name })}
                                 className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 transition disabled:opacity-50 cursor-pointer"
                               >
                                 <Unlock className="w-3 h-3" /> Unlock
                               </button>
                               <button
                                 disabled={confirmLoading}
-                                onClick={() => openConfirmModal({ type: 'ASSIGN_FREE', adminId: item.admin.id, adminEmail: item.admin.email })}
+                                onClick={() => openConfirmModal({ type: 'ASSIGN_FREE', adminId: item.college.id, adminEmail: item.college.name })}
                                 className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition disabled:opacity-50 cursor-pointer"
                               >
                                 <Gift className="w-3 h-3" /> Free
@@ -568,14 +571,14 @@ export function BillingManagementTab({ currentUserEmail }: { currentUserEmail: s
                             <>
                               <button
                                 disabled={confirmLoading}
-                                onClick={() => openConfirmModal({ type: 'LOCK', adminId: item.admin.id, adminEmail: item.admin.email })}
+                                onClick={() => openConfirmModal({ type: 'LOCK', adminId: item.college.id, adminEmail: item.college.name })}
                                 className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 transition disabled:opacity-50 cursor-pointer"
                               >
                                 <Lock className="w-3 h-3" /> Lock
                               </button>
                               <button
                                 disabled={confirmLoading}
-                                onClick={() => openConfirmModal({ type: 'REVOKE', adminId: item.admin.id, adminEmail: item.admin.email })}
+                                onClick={() => openConfirmModal({ type: 'REVOKE', adminId: item.college.id, adminEmail: item.college.name })}
                                 className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium bg-red-100 text-red-700 hover:bg-red-200 transition disabled:opacity-50 cursor-pointer"
                               >
                                 <XCircle className="w-3 h-3" /> Revoke
@@ -585,7 +588,7 @@ export function BillingManagementTab({ currentUserEmail }: { currentUserEmail: s
 
                           {/* Expand history */}
                           <button
-                            onClick={() => setExpandedAdmin(isExpanded ? null : item.admin.id)}
+                            onClick={() => setExpandedAdmin(isExpanded ? null : item.college.id)}
                             className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition cursor-pointer"
                           >
                             {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}

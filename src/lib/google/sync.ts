@@ -1,8 +1,9 @@
 import type { forms_v1 } from 'googleapis';
-import { executeWithGoogleOAuthRetry } from './auth';
+import { executeWithCollegeGoogleOAuthRetry } from './auth';
 import { appendResponsesToSheet, getExistingSheetResponseIds } from './sheets';
 import { BCE_FEEDBACK_PARAMETERS } from './template';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getAdminSession } from '@/lib/auth/admin-auth';
 import { generateResponseToken } from '@/lib/feedback/response-token';
 import { sendStudentSubmissionConfirmationEmail } from '@/lib/email/service';
 
@@ -18,25 +19,138 @@ export interface SyncResult {
  * Synchronizes submitted Google Form responses into the connected Google Sheet
  * using official Google Forms API v1 and Google Sheets API v4.
  *
+ * Security Invariant: The database feedback_forms.college_id is the authoritative
+ * tenant boundary. Client-supplied collegeId is never trusted to choose credentials.
+ * Authorization is strictly validated against form.college_id before accessing Google credentials.
+ *
  * Idempotent: Skips response IDs that are already present in the sheet.
  */
 export async function syncFormResponsesToSheet(params: {
-  googleFormId: string;
-  googleSheetId: string;
   formId?: string;
+  googleFormId?: string;
+  googleSheetId?: string;
+  skipAuthCheck?: boolean;
+  callerSession?: any;
 }): Promise<SyncResult> {
-  const { googleFormId, googleSheetId, formId } = params;
+  const supabase = createAdminClient();
+  if (!supabase) {
+    return {
+      success: false,
+      syncedCount: 0,
+      totalResponses: 0,
+      message: 'Supabase admin client unavailable.',
+      error: 'DATABASE_ERROR',
+    };
+  }
+
+  // 1. Authoritatively resolve the form and its institutional owner from the database
+  let formRecord: any = null;
+  if (params.formId) {
+    const { data, error } = await supabase
+      .from('feedback_forms')
+      .select('id, college_id, google_form_id, google_sheet_id, title, branch:branches(name), semester:semesters(name), academic_year:academic_years(name)')
+      .eq('id', params.formId)
+      .maybeSingle();
+    if (error || !data) {
+      return {
+        success: false,
+        syncedCount: 0,
+        totalResponses: 0,
+        message: `Feedback form not found: ${error?.message || params.formId}`,
+        error: 'FORM_NOT_FOUND',
+      };
+    }
+    formRecord = data;
+  } else if (params.googleFormId) {
+    const { data, error } = await supabase
+      .from('feedback_forms')
+      .select('id, college_id, google_form_id, google_sheet_id, title, branch:branches(name), semester:semesters(name), academic_year:academic_years(name)')
+      .eq('google_form_id', params.googleFormId)
+      .maybeSingle();
+    if (error || !data) {
+      return {
+        success: false,
+        syncedCount: 0,
+        totalResponses: 0,
+        message: `Feedback form not found for Google Form ID: ${params.googleFormId}`,
+        error: 'FORM_NOT_FOUND',
+      };
+    }
+    formRecord = data;
+  } else {
+    return {
+      success: false,
+      syncedCount: 0,
+      totalResponses: 0,
+      message: 'formId or googleFormId is required for response synchronization.',
+      error: 'INVALID_INPUT',
+    };
+  }
+
+  const collegeId: string = formRecord.college_id;
+  if (!collegeId) {
+    return {
+      success: false,
+      syncedCount: 0,
+      totalResponses: 0,
+      message: 'Form has no associated institutional college_id.',
+      error: 'MISSING_COLLEGE_ID',
+    };
+  }
+
+  // 2. Enforce admin session authorization for the form's authoritative college_id
+  if (!params.skipAuthCheck) {
+    const session = params.callerSession || (await getAdminSession());
+    if (!session.isAuthenticated || !session.isActive) {
+      return {
+        success: false,
+        syncedCount: 0,
+        totalResponses: 0,
+        message: 'Unauthorized: Active administrator session required.',
+        error: 'UNAUTHORIZED',
+      };
+    }
+
+    if (!session.isPlatformSuperAdmin) {
+      const isAuthorizedMember = session.colleges?.some(
+        (c: any) => c.id === collegeId && c.membershipStatus === 'ACTIVE'
+      );
+      if (!isAuthorizedMember) {
+        return {
+          success: false,
+          syncedCount: 0,
+          totalResponses: 0,
+          message: 'Forbidden: Administrator is not authorized for the college that owns this form.',
+          error: 'FORBIDDEN',
+        };
+      }
+    }
+  }
+
+  const resolvedFormId = params.googleFormId || formRecord.google_form_id;
+  const resolvedSheetId = params.googleSheetId || formRecord.google_sheet_id;
+
+  if (!resolvedFormId || !resolvedSheetId) {
+    return {
+      success: false,
+      syncedCount: 0,
+      totalResponses: 0,
+      message: 'Form is missing Google Form ID or Google Sheet ID.',
+      error: 'MISSING_GOOGLE_RESOURCES',
+    };
+  }
 
   try {
-    // Fetch form structure, submitted responses, and sheet state via OAuth retry wrapper
-    const { items, allResponses, sheetHeaders, sheetDataRows } = await executeWithGoogleOAuthRetry(
+    // Fetch form structure, submitted responses, and sheet state via college OAuth retry wrapper
+    const { items, allResponses, sheetHeaders, sheetDataRows } = await executeWithCollegeGoogleOAuthRetry(
+      collegeId,
       async ({ forms, sheets }) => {
-        const formMetadata = await forms.forms.get({ formId: googleFormId });
+        const formMetadata = await forms.forms.get({ formId: resolvedFormId });
         const items = formMetadata.data.items || [];
 
         let allResponses: forms_v1.Schema$FormResponse[] = [];
         try {
-          const responsesRes = await forms.forms.responses.list({ formId: googleFormId });
+          const responsesRes = await forms.forms.responses.list({ formId: resolvedFormId });
           allResponses = (responsesRes.data.responses || []) as forms_v1.Schema$FormResponse[];
         } catch (formsErr: unknown) {
           console.warn('[Sync] Google Forms API responses list notice:', formsErr instanceof Error ? formsErr.message : formsErr);
@@ -46,7 +160,7 @@ export async function syncFormResponsesToSheet(params: {
         let sheetDataRows: any[][] = [];
         try {
           const sheetDataRes = await sheets.spreadsheets.values.get({
-            spreadsheetId: googleSheetId,
+            spreadsheetId: resolvedSheetId,
             range: "'Form Responses'!A1:ZZ",
           });
           const allSheetValues = sheetDataRes.data.values || [];
@@ -122,7 +236,7 @@ export async function syncFormResponsesToSheet(params: {
     }
 
     // 4. Check which responses are already recorded in the Google Sheet
-    const existingIds = await getExistingSheetResponseIds(googleSheetId);
+    const existingIds = await getExistingSheetResponseIds(resolvedSheetId, collegeId);
     const rowsToAppend: (string | number)[][] = [];
 
     for (const resp of allResponses) {
@@ -213,37 +327,18 @@ export async function syncFormResponsesToSheet(params: {
 
     // 4. Append new response rows to the sheet
     if (rowsToAppend.length > 0) {
-      await appendResponsesToSheet(googleSheetId, rowsToAppend);
+      await appendResponsesToSheet(resolvedSheetId, rowsToAppend, collegeId);
     }
 
     // 5. Track Response Records in Supabase Database & Dispatch Confirmation Email (Idempotent)
-    const supabase = createAdminClient();
-    if (supabase) {
+    if (supabase && formRecord) {
       try {
-        let formRecord: any = null;
-        if (formId) {
-          const { data } = await supabase
-            .from('feedback_forms')
-            .select('id, title, branch:branches(name), semester:semesters(name), academic_year:academic_years(name)')
-            .eq('id', formId)
-            .maybeSingle();
-          formRecord = data;
-        } else {
-          const { data } = await supabase
-            .from('feedback_forms')
-            .select('id, title, branch:branches(name), semester:semesters(name), academic_year:academic_years(name)')
-            .eq('google_form_id', googleFormId)
-            .maybeSingle();
-          formRecord = data;
-        }
-
-        if (formRecord) {
-          const formUuid = formRecord.id;
-          const branchName = formRecord.branch?.name || 'Department';
-          const semesterName = formRecord.semester?.name || 'Semester';
-          const academicYearName = formRecord.academic_year?.name || 'Academic Session';
-          const formTitle = formRecord.title || 'Faculty Feedback Form';
-          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://bce-bgp-feedback-management-system.vercel.app';
+        const formUuid = formRecord.id;
+        const branchName = formRecord.branch?.name || 'Department';
+        const semesterName = formRecord.semester?.name || 'Semester';
+        const academicYearName = formRecord.academic_year?.name || 'Academic Session';
+        const formTitle = formRecord.title || 'Faculty Feedback Form';
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://bce-bgp-feedback-management-system.vercel.app';
 
           // Consolidate response items to track from Forms API + Sheet Rows
           interface TrackingMetadata {
@@ -399,7 +494,6 @@ export async function syncFormResponsesToSheet(params: {
               })
               .eq('id', formUuid);
           }
-        }
       } catch (dbSyncErr) {
         console.error('[Sync] Error syncing response metadata to Supabase:', dbSyncErr);
       }
@@ -421,12 +515,16 @@ export async function syncFormResponsesToSheet(params: {
     };
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
+    const errCode = (err as any)?.code || ((err as any)?.status === 401 ? 'UNAUTHORIZED' : undefined);
     return {
       success: false,
       syncedCount: 0,
       totalResponses: 0,
-      message: `Failed to synchronize responses: ${errMsg}`,
-      error: errMsg,
+      message:
+        errCode === 'GOOGLE_CONNECTION_REQUIRED'
+          ? (err as any).message || 'Google account is not connected for this college.'
+          : `Failed to synchronize responses: ${errMsg}`,
+      error: errCode || errMsg,
     };
   }
 }

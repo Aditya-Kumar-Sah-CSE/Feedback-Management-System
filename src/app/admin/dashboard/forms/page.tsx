@@ -47,7 +47,7 @@ export default async function FeedbackFormsPage({
 
   const resolvedParams = await searchParams;
   const supabase = await createClient();
-  const googleStatus = getGoogleConfigStatus();
+  const googleStatus = await getGoogleConfigStatus(session.activeCollegeId || undefined);
 
   // Pagination calculations
   const currentPage = resolvedParams.page ? Math.max(1, parseInt(resolvedParams.page, 10)) : 1;
@@ -260,7 +260,7 @@ export default async function FeedbackFormsPage({
             </div>
           </div>
           <Link
-            href="/api/auth/google?returnTo=/admin/dashboard/forms"
+            href={`/api/auth/google?collegeId=${encodeURIComponent(session.activeCollegeId || '')}&returnTo=/admin/dashboard/forms`}
             className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs inline-flex items-center gap-2 shrink-0 self-start sm:self-auto"
           >
             <Sparkles className="w-3.5 h-3.5 text-amber-200" />
@@ -280,7 +280,7 @@ export default async function FeedbackFormsPage({
               {googleStatus.hasAppsScript ? 'Apps Script Web App Configured' : 'Application-Managed Sync Active'}
             </span>
             <Link
-              href="/api/auth/google?returnTo=/admin/dashboard/forms"
+              href={`/api/auth/google?collegeId=${encodeURIComponent(session.activeCollegeId || '')}&returnTo=/admin/dashboard/forms`}
               className="px-3 py-1 bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-100/60 rounded-lg text-[11px] font-bold transition-colors inline-flex items-center gap-1.5 shadow-2xs"
             >
               <RefreshCw className="w-3 h-3 text-emerald-700" />

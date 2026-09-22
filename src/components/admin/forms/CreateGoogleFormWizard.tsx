@@ -273,7 +273,7 @@ export function CreateGoogleFormWizard({
   const handleGenerateForm = async () => {
     if (!googleStatus.isConfigured) {
       setErrorMsg(
-        'Google API credentials are not configured in .env.local. Please configure GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN before creating live forms.'
+        'Google Workspace is not connected for this institution. Please connect Google Workspace before creating live forms.'
       );
       return;
     }
@@ -456,16 +456,11 @@ export function CreateGoogleFormWizard({
         <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl flex items-start gap-3 text-xs text-amber-950">
           <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
           <div className="space-y-1">
-            <p className="font-bold text-amber-900">Google API Credentials Required</p>
+            <p className="font-bold text-amber-900">Google Workspace Connection Required</p>
             <p className="text-amber-800">
-              Form generation connects to live Google APIs (Google Forms API, Sheets API, and Drive API).
-              Please ensure your <code className="px-1.5 py-0.5 bg-amber-100 rounded text-amber-900 font-mono">.env.local</code> has:
+              Form generation connects to live Google APIs (Forms, Sheets, and Drive).
+              Please connect your institution&apos;s Google account from the dashboard before creating forms.
             </p>
-            <ul className="list-disc list-inside space-y-0.5 font-mono text-[11px] text-amber-900 pt-1">
-              <li>GOOGLE_CLIENT_ID</li>
-              <li>GOOGLE_CLIENT_SECRET</li>
-              <li>GOOGLE_REFRESH_TOKEN</li>
-            </ul>
           </div>
         </div>
       )}

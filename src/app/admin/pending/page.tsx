@@ -59,7 +59,7 @@ export default function AdminPendingPage() {
           Admin Access Pending
         </h2>
         <p className="mt-1 text-xs text-slate-400">
-          Bhagalpur College of Engineering • Faculty Feedback Portal
+          Institutional Feedback Platform • Administrator Portal
         </p>
       </div>
 
@@ -72,7 +72,7 @@ export default function AdminPendingPage() {
             </div>
             <p className="text-xs text-slate-300 leading-relaxed">
               Your registration has been received and is in the <strong>PENDING</strong> review queue.
-              To maintain academic integrity and data security, only approved and active BCE administrators are permitted to enter the dashboard.
+              To maintain academic integrity and data security, only approved and active institutional administrators are permitted to enter the dashboard.
             </p>
           </div>
 

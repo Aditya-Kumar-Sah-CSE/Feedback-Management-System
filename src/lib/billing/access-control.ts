@@ -1,14 +1,10 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { SUPER_ADMIN_EMAIL } from '@/lib/auth/admin-auth';
-import type { PlanType, AdminTrialEntitlement, TrialStatus } from '@/types/database';
+import type { PlanType, CollegeTrialEntitlement, TrialStatus } from '@/types/database';
 import {
   FEATURE_GOOGLE_FORM_GENERATION,
   FEATURE_GOOGLE_SHEET_INTEGRATION,
-  FEATURE_FULL_ANALYTICS_ACCESS,
-  FEATURE_BASIC_ANALYTICS,
-  FEATURE_ANALYTICS_PDF,
-  FEATURE_PRIORITY_SUPPORT,
   planHasFeature,
   type BillingStatus,
   type FormAccessResult,
@@ -17,6 +13,10 @@ import {
   type AnalyticsAccessResult,
   type PdfAccessResult,
 } from './constants';
+import {
+  getCollegeEntitlements,
+  hasCollegeFeature,
+} from './entitlements';
 
 // Re-export for convenience — consumers can import from either file
 export type {
@@ -38,103 +38,42 @@ export {
   planHasFeature,
 } from './constants';
 
+export { getCollegeEntitlements, hasCollegeFeature };
+
 async function getAdminDb() {
   return createAdminClient() || await createClient();
 }
 
 // ====================================================================
-// 1. TRIAL ENTITLEMENT ENGINE
+// 1. TENANT BILLING & TRIAL RESOLUTION
 // ====================================================================
 
 /**
- * Reads the active trial entitlement for a given admin.
- * Evaluates against server/database time:
- * - status = 'ACTIVE'
- * - starts_at <= now
- * - now < expires_at
- *
- * If a trial is marked ACTIVE in DB but expires_at <= now,
- * lazily normalizes the status to 'EXPIRED' in DB, logs an audit record,
- * and returns null.
+ * Read the active trial entitlement for a given college (or legacy adminId).
+ * Strictly read-only; does not mutate the database.
  */
-export async function getActiveTrialEntitlement(adminId: string): Promise<AdminTrialEntitlement | null> {
-  if (!adminId) return null;
-
-  const supabase = await getAdminDb();
-  const { data: trial, error } = await supabase
-    .from('admin_trial_entitlements')
-    .select('*')
-    .eq('admin_id', adminId)
-    .eq('status', 'ACTIVE')
-    .maybeSingle();
-
-  if (error || !trial) {
-    return null;
-  }
-
-  const now = new Date();
-  const startsAt = new Date(trial.starts_at);
-  const expiresAt = new Date(trial.expires_at);
-
-  // Lazy normalization if trial has expired
-  if (expiresAt <= now) {
-    try {
-      await supabase
-        .from('admin_trial_entitlements')
-        .update({
-          status: 'EXPIRED',
-          updated_at: now.toISOString(),
-        })
-        .eq('id', trial.id)
-        .eq('status', 'ACTIVE');
-
-      await supabase.from('audit_logs').insert({
-        admin_id: adminId,
-        actor_email: 'system',
-        action: 'TRIAL_EXPIRED',
-        entity_type: 'admin_trial_entitlements',
-        entity_id: trial.id,
-        details: `Trial expired for admin ID ${adminId}. Valid from ${trial.starts_at} to ${trial.expires_at}.`,
-      });
-    } catch {
-      // Non-fatal logging/update failure
-    }
-    return null;
-  }
-
-  // Not yet started (future trial)
-  if (startsAt > now) {
-    return null;
-  }
-
-  return trial as AdminTrialEntitlement;
+export async function getActiveTrialEntitlement(collegeId: string): Promise<CollegeTrialEntitlement | null> {
+  if (!collegeId) return null;
+  const entitlements = await getCollegeEntitlements(collegeId);
+  return entitlements.activeTrial;
 }
 
 /**
- * Checks if an admin currently has a valid active trial entitlement.
+ * Checks if a college currently has a valid active trial entitlement.
  */
-export async function hasActiveTrial(adminId: string): Promise<boolean> {
-  const trial = await getActiveTrialEntitlement(adminId);
+export async function hasActiveTrial(collegeId: string): Promise<boolean> {
+  const trial = await getActiveTrialEntitlement(collegeId);
   return trial !== null;
 }
 
-// ====================================================================
-// 2. EFFECTIVE BILLING & TRIAL RESOLUTION
-// ====================================================================
-
 /**
- * Computes effective access & features by combining:
- * 1. FREE Base Plan (always available, provides Basic Analytics)
- * 2. Active Paid Subscription (if unlocked and unexpired)
- * 3. Active Trial Entitlement (if status = ACTIVE and not expired)
- *
- * Expired trials contribute ZERO access.
- * Expired paid plans contribute ZERO paid features and fall back to FREE.
+ * Computes effective access & features for a tenant college.
+ * Strictly read-only; delegates to getCollegeEntitlements.
  */
-export async function getEffectiveBillingFeatures(adminId: string): Promise<{
+export async function getEffectiveBillingFeatures(collegeId: string): Promise<{
   effectiveFeatures: string[];
   hasActiveTrial: boolean;
-  activeTrial: AdminTrialEntitlement | null;
+  activeTrial: CollegeTrialEntitlement | null;
   billingAccount: any;
   planType: PlanType;
   isUnlocked: boolean;
@@ -147,248 +86,217 @@ export async function getEffectiveBillingFeatures(adminId: string): Promise<{
   trialExpiresAt: string | null;
   trialDaysRemaining: number | null;
 }> {
-  const supabase = await getAdminDb();
-  const now = new Date();
-
-  // 1. Fetch active trial
-  const activeTrial = await getActiveTrialEntitlement(adminId);
-  const hasActiveTrialBool = !!activeTrial;
-
-  // If no active trial, check latest trial status for UI reporting (EXPIRED / REVOKED / NONE)
-  let latestTrialStatus: 'NONE' | TrialStatus = hasActiveTrialBool ? 'ACTIVE' : 'NONE';
-  let trialExpiresAt: string | null = activeTrial?.expires_at || null;
-
-  if (!activeTrial) {
-    const { data: latestTrial } = await supabase
-      .from('admin_trial_entitlements')
-      .select('status, expires_at')
-      .eq('admin_id', adminId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (latestTrial) {
-      latestTrialStatus = latestTrial.status as TrialStatus;
-      trialExpiresAt = latestTrial.expires_at;
-    }
-  }
-
-  // 2. Fetch billing account
-  const { data: billing } = await supabase
-    .from('admin_billing_accounts')
-    .select('*')
-    .eq('admin_user_id', adminId)
-    .maybeSingle();
-
-  const planType: PlanType = (billing?.plan_type as PlanType) || 'FREE';
-  const isPaid = planType !== 'FREE';
-  const isPaidExpired = isPaid && billing?.expires_at && new Date(billing.expires_at) < now;
-
-  // Paid plan expiry auto-fallback to FREE
-  if (isPaidExpired && billing?.id) {
-    try {
-      await supabase
-        .from('admin_billing_accounts')
-        .update({
-          subscription_status: 'EXPIRED',
-          updated_at: now.toISOString(),
-        })
-        .eq('id', billing.id);
-
-      await supabase.from('audit_logs').insert({
-        admin_id: adminId,
-        actor_email: 'system',
-        action: 'PLAN_EXPIRED',
-        entity_type: 'admin_billing_accounts',
-        entity_id: billing.id,
-        details: `Paid subscription (${planType}) expired. Access automatically fell back to FREE base plan.`,
-      });
-    } catch {
-      // Non-fatal
-    }
-  }
-
-  // 3. Resolve plan features from DB
-  let planFeatures: string[] = [FEATURE_BASIC_ANALYTICS]; // Default FREE base plan
-
-  if (isPaid && !isPaidExpired && billing?.access_status === 'UNLOCKED') {
-    const { data: planData } = await supabase
-      .from('billing_plans')
-      .select('features')
-      .eq('slug', planType)
-      .eq('is_active', true)
-      .maybeSingle();
-
-    if (planData?.features && Array.isArray(planData.features)) {
-      planFeatures = planData.features as string[];
-    } else {
-      // Fallback for standard paid plans if DB is unseeded
-      planFeatures = [
-        FEATURE_GOOGLE_FORM_GENERATION,
-        FEATURE_GOOGLE_SHEET_INTEGRATION,
-        FEATURE_FULL_ANALYTICS_ACCESS,
-        FEATURE_PRIORITY_SUPPORT,
-      ];
-    }
-  } else {
-    // FREE base plan features from DB
-    const { data: freePlanData } = await supabase
-      .from('billing_plans')
-      .select('features')
-      .eq('slug', 'FREE')
-      .maybeSingle();
-
-    if (freePlanData?.features && Array.isArray(freePlanData.features)) {
-      planFeatures = freePlanData.features as string[];
-    } else {
-      planFeatures = [FEATURE_BASIC_ANALYTICS];
-    }
-  }
-
-  // 4. Union of Plan Features + Active Trial Features
-  const trialFeatures = (activeTrial?.features as string[]) || [];
-  const combinedSet = new Set<string>([...planFeatures, ...trialFeatures]);
-  const effectiveFeatures = Array.from(combinedSet);
-
-  // 5. Capability flags (derived strictly from effectiveFeatures)
-  const hasFormGeneration = planHasFeature(effectiveFeatures, FEATURE_GOOGLE_FORM_GENERATION);
-  const hasSheetIntegration = planHasFeature(effectiveFeatures, FEATURE_GOOGLE_SHEET_INTEGRATION);
-  const hasBasicAnalytics = planHasFeature(effectiveFeatures, FEATURE_BASIC_ANALYTICS);
-  const hasFullAnalytics = planHasFeature(effectiveFeatures, FEATURE_FULL_ANALYTICS_ACCESS);
-  const hasPdfAccess = planHasFeature(effectiveFeatures, FEATURE_ANALYTICS_PDF);
-
-  // Form access is UNLOCKED if and only if effective features include form generation
-  const isUnlocked = hasFormGeneration;
-
-  // Calculate days remaining on active trial
-  let trialDaysRemaining: number | null = null;
-  if (activeTrial) {
-    const diffMs = new Date(activeTrial.expires_at).getTime() - now.getTime();
-    trialDaysRemaining = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-  }
-
+  const ent = await getCollegeEntitlements(collegeId);
   return {
-    effectiveFeatures,
-    hasActiveTrial: hasActiveTrialBool,
-    activeTrial,
-    billingAccount: billing,
-    planType,
-    isUnlocked,
-    hasFormGeneration,
-    hasSheetIntegration,
-    hasBasicAnalytics,
-    hasFullAnalytics,
-    hasPdfAccess,
-    trialStatus: latestTrialStatus,
-    trialExpiresAt,
-    trialDaysRemaining,
+    effectiveFeatures: ent.effectiveFeatures,
+    hasActiveTrial: ent.hasActiveTrial,
+    activeTrial: ent.activeTrial,
+    billingAccount: ent.paidPlan ? {
+      plan_type: ent.paidPlan.slug,
+      expires_at: ent.paidPlan.expiresAt,
+      subscription_status: ent.paidPlan.status,
+    } : null,
+    planType: ent.planType,
+    isUnlocked: ent.isUnlocked,
+    hasFormGeneration: ent.hasFormGeneration,
+    hasSheetIntegration: ent.hasSheetIntegration,
+    hasBasicAnalytics: ent.hasBasicAnalytics,
+    hasFullAnalytics: ent.hasFullAnalytics,
+    hasPdfAccess: ent.hasPdfAccess,
+    trialStatus: ent.trialStatus,
+    trialExpiresAt: ent.trialExpiresAt,
+    trialDaysRemaining: ent.trialDaysRemaining,
   };
 }
 
 /**
- * Checks if a specific feature is available for the given admin.
+ * Checks if a specific feature is available for the given college.
  */
-export async function hasBillingFeature(adminId: string, feature: string): Promise<boolean> {
-  const { effectiveFeatures } = await getEffectiveBillingFeatures(adminId);
-  return planHasFeature(effectiveFeatures, feature);
+export async function hasBillingFeature(collegeId: string, feature: string): Promise<boolean> {
+  return hasCollegeFeature(collegeId, feature);
 }
 
 // ====================================================================
-// 3. BILLING STATUS QUERY (Consumer-facing)
+// 2. BILLING STATUS QUERY (Consumer-facing)
 // ====================================================================
 
 /**
- * Read the comprehensive billing state for a given admin (by admins.id).
+ * Read the comprehensive billing state for a tenant college.
  * Returns complete BillingStatus including active trial metadata.
  */
-export async function getAdminBillingStatus(adminId: string): Promise<BillingStatus> {
-  const {
-    effectiveFeatures,
-    hasActiveTrial: activeTrialPresent,
-    activeTrial,
-    billingAccount,
-    planType,
-    isUnlocked,
-    hasFormGeneration,
-    hasSheetIntegration,
-    hasBasicAnalytics,
-    hasFullAnalytics,
-    hasPdfAccess,
-    trialStatus,
-    trialExpiresAt,
-    trialDaysRemaining,
-  } = await getEffectiveBillingFeatures(adminId);
+export async function getCollegeBillingStatus(collegeId: string): Promise<BillingStatus> {
+  const ent = await getCollegeEntitlements(collegeId);
+  return {
+    isUnlocked: ent.isUnlocked,
+    planType: ent.planType,
+    accessStatus: ent.accessStatus,
+    subscriptionStatus: ent.subscriptionStatus,
+    expiresAt: ent.expiresAt,
+    startedAt: ent.startedAt,
+    billingAccountId: ent.billingAccountId,
+    isExpired: ent.isExpired,
+    features: ent.effectiveFeatures,
+    hasFormGeneration: ent.hasFormGeneration,
+    hasSheetIntegration: ent.hasSheetIntegration,
+    hasBasicAnalytics: ent.hasBasicAnalytics,
+    hasFullAnalytics: ent.hasFullAnalytics,
+    hasPdfAccess: ent.hasPdfAccess,
+    hasActiveTrial: ent.hasActiveTrial,
+    activeTrial: ent.activeTrial,
+    trialStatus: ent.trialStatus,
+    trialExpiresAt: ent.trialExpiresAt,
+    trialDaysRemaining: ent.trialDaysRemaining,
+  };
+}
 
-  const now = new Date();
-  const isPaidExpired = planType !== 'FREE'
-    && billingAccount?.expires_at
-    && new Date(billingAccount.expires_at) < now;
+/**
+ * Backward-compatible alias for getCollegeBillingStatus.
+ */
+export async function getAdminBillingStatus(collegeOrAdminId: string): Promise<BillingStatus> {
+  return getCollegeBillingStatus(collegeOrAdminId);
+}
+
+// ====================================================================
+// HELPER: Resolve Context from Session or Parameters
+// ====================================================================
+
+interface ResolvedCallerContext {
+  isSuperAdmin: boolean;
+  isAuthorized: boolean;
+  collegeId: string | null;
+  errorReason?: string;
+  errorCode?: 'UNAUTHORIZED' | 'ACCOUNT_INACTIVE';
+}
+
+function resolveContext(
+  sessionOrId: any,
+  adminEmail?: string,
+  adminRole?: string,
+  adminStatus?: string
+): ResolvedCallerContext {
+  if (!sessionOrId) {
+    return {
+      isSuperAdmin: false,
+      isAuthorized: false,
+      collegeId: null,
+      errorReason: 'Authentication required. No session or ID provided.',
+      errorCode: 'UNAUTHORIZED',
+    };
+  }
+
+  // Case 1: An AdminSession context object was provided
+  if (typeof sessionOrId === 'object') {
+    const session = sessionOrId;
+    const isSuper = Boolean(session.isSuperAdmin || session.isPlatformSuperAdmin);
+
+    if (isSuper) {
+      return {
+        isSuperAdmin: true,
+        isAuthorized: true,
+        collegeId: session.activeCollegeId || null,
+      };
+    }
+
+    if (!session.isAuthenticated) {
+      return {
+        isSuperAdmin: false,
+        isAuthorized: false,
+        collegeId: null,
+        errorReason: 'Unauthorized. Please sign in.',
+        errorCode: 'UNAUTHORIZED',
+      };
+    }
+
+    if (!session.isActive) {
+      return {
+        isSuperAdmin: false,
+        isAuthorized: false,
+        collegeId: null,
+        errorReason: 'Your administrator account is inactive. Please contact the Super Admin.',
+        errorCode: 'ACCOUNT_INACTIVE',
+      };
+    }
+
+    const collegeId = session.activeCollegeId || null;
+    if (!collegeId) {
+      return {
+        isSuperAdmin: false,
+        isAuthorized: false,
+        collegeId: null,
+        errorReason: 'No active college selected for this session.',
+        errorCode: 'UNAUTHORIZED',
+      };
+    }
+
+    return {
+      isSuperAdmin: false,
+      isAuthorized: true,
+      collegeId,
+    };
+  }
+
+  // Case 2: Individual arguments passed: (id, email, role, status)
+  const isSuper = adminRole === 'SUPER_ADMIN'
+    || (adminEmail && adminEmail.toLowerCase().trim() === SUPER_ADMIN_EMAIL);
+
+  if (isSuper) {
+    return {
+      isSuperAdmin: true,
+      isAuthorized: true,
+      collegeId: String(sessionOrId),
+    };
+  }
+
+  if (adminStatus && adminStatus !== 'ACTIVE') {
+    return {
+      isSuperAdmin: false,
+      isAuthorized: false,
+      collegeId: null,
+      errorReason: 'Your administrator account is inactive. Please contact the Super Admin.',
+      errorCode: 'ACCOUNT_INACTIVE',
+    };
+  }
 
   return {
-    isUnlocked,
-    planType,
-    accessStatus: isUnlocked ? 'UNLOCKED' : 'LOCKED',
-    subscriptionStatus: isPaidExpired ? 'EXPIRED' : (billingAccount?.subscription_status || 'ACTIVE'),
-    expiresAt: billingAccount?.expires_at || null,
-    startedAt: billingAccount?.started_at || null,
-    billingAccountId: billingAccount?.id || null,
-    isExpired: !!isPaidExpired,
-    features: effectiveFeatures,
-    hasFormGeneration,
-    hasSheetIntegration,
-    hasBasicAnalytics,
-    hasFullAnalytics,
-    hasPdfAccess,
-    hasActiveTrial: activeTrialPresent,
-    activeTrial,
-    trialStatus,
-    trialExpiresAt,
-    trialDaysRemaining,
+    isSuperAdmin: false,
+    isAuthorized: true,
+    collegeId: String(sessionOrId),
   };
 }
 
 // ====================================================================
-// 4. CENTRALIZED FORM GENERATION ACCESS GATE
+// 3. CENTRALIZED FORM GENERATION ACCESS GATE
 // ====================================================================
 
-/**
- * THE ONE centralized authorization function for Google Form generation.
- *
- * Rules:
- * - Super Admin is ALWAYS allowed.
- * - Admin must be active.
- * - FREE base plan does NOT include Google Form generation.
- * - Google Form generation is ALLOWED if:
- *   a) Active Trial includes "Google Form generation", OR
- *   b) Active Paid Plan includes "Google Form generation" (unlocked & unexpired).
- * - Otherwise DENIED.
- */
 export async function assertFormGenerationAccess(
-  adminId: string | null | undefined,
-  adminEmail: string | undefined,
-  adminRole: string | undefined,
-  adminStatus: string | undefined,
+  sessionOrId: any,
+  adminEmail?: string,
+  adminRole?: string,
+  adminStatus?: string,
 ): Promise<FormAccessResult> {
-  // 1. Valid admin record check
-  if (!adminId) {
-    return { allowed: false, reason: 'No admin record found. Please contact the Super Admin.' };
+  const ctx = resolveContext(sessionOrId, adminEmail, adminRole, adminStatus);
+
+  if (!ctx.isAuthorized) {
+    return {
+      allowed: false,
+      reason: ctx.errorReason || 'Unauthorized.',
+      code: ctx.errorCode || 'UNAUTHORIZED',
+    };
   }
 
-  // 2. Active status check
-  if (adminStatus !== 'ACTIVE') {
-    return { allowed: false, reason: 'Your administrator account is inactive. Please contact the Super Admin.' };
-  }
-
-  // 3. Super Admin bypass — ALWAYS allowed
-  const isSuperAdmin = adminRole === 'SUPER_ADMIN'
-    || (adminEmail && adminEmail.toLowerCase().trim() === SUPER_ADMIN_EMAIL);
-
-  if (isSuperAdmin) {
+  if (ctx.isSuperAdmin) {
     return { allowed: true, reason: 'Super Admin access granted.' };
   }
 
-  // 4. Check effective billing & trial features
-  const billingStatus = await getAdminBillingStatus(adminId);
+  if (!ctx.collegeId) {
+    return {
+      allowed: false,
+      code: 'UNAUTHORIZED',
+      reason: 'No college tenant context found.',
+    };
+  }
+
+  const billingStatus = await getCollegeBillingStatus(ctx.collegeId);
   const hasFormGen = planHasFeature(billingStatus.features, FEATURE_GOOGLE_FORM_GENERATION);
 
   if (!hasFormGen) {
@@ -403,72 +311,52 @@ export async function assertFormGenerationAccess(
   return { allowed: true, reason: 'Access granted.', billingStatus };
 }
 
-/**
- * Convenience helper to check if an admin or session has form generation access.
- */
 export async function canGenerateForms(
   sessionOrAdminId: any,
   adminEmail?: string,
   adminRole?: string,
   adminStatus?: string
 ): Promise<boolean> {
-  if (!sessionOrAdminId) return false;
-
-  if (typeof sessionOrAdminId === 'object') {
-    const session = sessionOrAdminId;
-    if (session.isSuperAdmin) return true;
-    if (!session.isAuthenticated || !session.isActive || !session.admin?.id) return false;
-    const res = await assertFormGenerationAccess(
-      session.admin.id,
-      session.admin.email || session.user?.email,
-      session.admin.role,
-      session.admin.status
-    );
-    return res.allowed;
-  }
-
   const res = await assertFormGenerationAccess(sessionOrAdminId, adminEmail, adminRole, adminStatus);
   return res.allowed;
 }
 
+// ====================================================================
+// 4. CENTRALIZED SHEET INTEGRATION ACCESS GATE
+// ====================================================================
 
-/**
- * Authorization function for Google Sheet creation, integration, and response sync management.
- *
- * Rules:
- * - Super Admin is ALWAYS allowed.
- * - Admin must be active.
- * - Basic Analytics users CANNOT manage sheet sync or integrations.
- * - ALLOWED if:
- *   a) Active Trial includes "Google Sheet integration", OR
- *   b) Active Paid Plan includes "Google Sheet integration" (unlocked & unexpired).
- * - Otherwise DENIED.
- */
 export async function assertSheetIntegrationAccess(
-  adminId: string | null | undefined,
-  adminEmail: string | undefined,
-  adminRole: string | undefined,
-  adminStatus: string | undefined,
+  sessionOrId: any,
+  adminEmail?: string,
+  adminRole?: string,
+  adminStatus?: string,
 ): Promise<SheetIntegrationAccessResult> {
-  if (!adminId) {
-    return { allowed: false, reason: 'No admin record found. Please contact the Super Admin.' };
+  const ctx = resolveContext(sessionOrId, adminEmail, adminRole, adminStatus);
+
+  if (!ctx.isAuthorized) {
+    return {
+      allowed: false,
+      reason: ctx.errorReason || 'Unauthorized.',
+      code: ctx.errorCode || 'UNAUTHORIZED',
+    };
   }
 
-  if (adminStatus !== 'ACTIVE') {
-    return { allowed: false, reason: 'Your administrator account is inactive. Please contact the Super Admin.' };
-  }
-
-  const isSuperAdmin = adminRole === 'SUPER_ADMIN'
-    || (adminEmail && adminEmail.toLowerCase().trim() === SUPER_ADMIN_EMAIL);
-
-  if (isSuperAdmin) {
+  if (ctx.isSuperAdmin) {
     return { allowed: true, reason: 'Super Admin access granted.' };
   }
 
-  const billingStatus = await getAdminBillingStatus(adminId);
-  const hasSheetIntegration = planHasFeature(billingStatus.features, FEATURE_GOOGLE_SHEET_INTEGRATION);
+  if (!ctx.collegeId) {
+    return {
+      allowed: false,
+      code: 'UNAUTHORIZED',
+      reason: 'No college tenant context found.',
+    };
+  }
 
-  if (!hasSheetIntegration) {
+  const billingStatus = await getCollegeBillingStatus(ctx.collegeId);
+  const hasSheet = planHasFeature(billingStatus.features, FEATURE_GOOGLE_SHEET_INTEGRATION);
+
+  if (!hasSheet) {
     return {
       allowed: false,
       code: 'SHEET_INTEGRATION_LOCKED',
@@ -480,90 +368,50 @@ export async function assertSheetIntegrationAccess(
   return { allowed: true, reason: 'Access granted.', billingStatus };
 }
 
-/**
- * Convenience helper to check if an admin or session has sheet integration access.
- */
 export async function canIntegrateSheets(
   sessionOrAdminId: any,
   adminEmail?: string,
   adminRole?: string,
   adminStatus?: string
 ): Promise<boolean> {
-  if (!sessionOrAdminId) return false;
-
-  if (typeof sessionOrAdminId === 'object') {
-    const session = sessionOrAdminId;
-    if (session.isSuperAdmin) return true;
-    if (!session.isAuthenticated || !session.isActive || !session.admin?.id) return false;
-    const res = await assertSheetIntegrationAccess(
-      session.admin.id,
-      session.admin.email || session.user?.email,
-      session.admin.role,
-      session.admin.status
-    );
-    return res.allowed;
-  }
-
   const res = await assertSheetIntegrationAccess(sessionOrAdminId, adminEmail, adminRole, adminStatus);
   return res.allowed;
 }
 
 // ====================================================================
-// 5. CENTRALIZED ANALYTICS & RESULTS ACCESS GATE
+// 5. CENTRALIZED ANALYTICS ACCESS GATE
 // ====================================================================
 
-/**
- * THE ONE centralized authorization function for Analytics & Results access.
- *
- * Rules:
- * - Super Admin is ALWAYS allowed (full analytics access).
- * - Admin must be active.
- * - Basic Analytics users can view authorized Sheet/response data only.
- * - Full Analytics Access is required for charts, aggregates, metrics, and PDFs.
- * - Full Analytics is ALLOWED if:
- *   a) Active Trial includes "Full analytics access", OR
- *   b) Active Paid Plan includes "Full analytics access" (unlocked & unexpired).
- * - Otherwise DENIED with code: "ANALYTICS_UPGRADE_REQUIRED".
- */
 export async function assertAnalyticsAccess(
-  adminId: string | null | undefined,
-  adminEmail: string | undefined,
-  adminRole: string | undefined,
-  adminStatus: string | undefined,
+  sessionOrId: any,
+  adminEmail?: string,
+  adminRole?: string,
+  adminStatus?: string,
 ): Promise<AnalyticsAccessResult> {
-  // 1. Valid admin record check
-  if (!adminId) {
+  const ctx = resolveContext(sessionOrId, adminEmail, adminRole, adminStatus);
+
+  if (!ctx.isAuthorized) {
+    return {
+      allowed: false,
+      code: ctx.errorCode || 'UNAUTHORIZED',
+      reason: ctx.errorReason || 'Unauthorized.',
+    };
+  }
+
+  if (ctx.isSuperAdmin) {
+    return { allowed: true, reason: 'Super Admin access granted.' };
+  }
+
+  if (!ctx.collegeId) {
     return {
       allowed: false,
       code: 'UNAUTHORIZED',
-      reason: 'No admin record found. Please log in or contact the Super Admin.',
+      reason: 'No college tenant context found.',
     };
   }
 
-  // 2. Active status check
-  if (adminStatus !== 'ACTIVE') {
-    return {
-      allowed: false,
-      code: 'ACCOUNT_INACTIVE',
-      reason: 'Your administrator account is inactive. Please contact the Super Admin.',
-    };
-  }
+  const billingStatus = await getCollegeBillingStatus(ctx.collegeId);
 
-  // 3. Super Admin bypass — ALWAYS allowed
-  const isSuperAdmin = adminRole === 'SUPER_ADMIN'
-    || (adminEmail && adminEmail.toLowerCase().trim() === SUPER_ADMIN_EMAIL);
-
-  if (isSuperAdmin) {
-    return {
-      allowed: true,
-      reason: 'Super Admin access granted.',
-    };
-  }
-
-  // 4. Check effective billing & trial features
-  const billingStatus = await getAdminBillingStatus(adminId);
-
-  // 5. Check if effective features contain Full analytics access
   if (!billingStatus.hasFullAnalytics) {
     return {
       allowed: false,
@@ -573,38 +421,15 @@ export async function assertAnalyticsAccess(
     };
   }
 
-  return {
-    allowed: true,
-    reason: 'Full analytics access granted.',
-    billingStatus,
-  };
+  return { allowed: true, reason: 'Full analytics access granted.', billingStatus };
 }
 
-/**
- * Convenience helper to check if an admin or session has analytics access.
- * Accepts either an AdminAuthResult (session) or individual parameters.
- */
 export async function canAccessAnalytics(
   sessionOrAdminId: any,
   adminEmail?: string,
   adminRole?: string,
   adminStatus?: string
 ): Promise<boolean> {
-  if (!sessionOrAdminId) return false;
-
-  if (typeof sessionOrAdminId === 'object') {
-    const session = sessionOrAdminId;
-    if (session.isSuperAdmin) return true;
-    if (!session.isAuthenticated || !session.isActive || !session.admin?.id) return false;
-    const res = await assertAnalyticsAccess(
-      session.admin.id,
-      session.admin.email || session.user?.email,
-      session.admin.role,
-      session.admin.status
-    );
-    return res.allowed;
-  }
-
   const res = await assertAnalyticsAccess(sessionOrAdminId, adminEmail, adminRole, adminStatus);
   return res.allowed;
 }
@@ -613,47 +438,35 @@ export async function canAccessAnalytics(
 // 6. CENTRALIZED BASIC ANALYTICS ACCESS GATE
 // ====================================================================
 
-/**
- * THE ONE centralized authorization function for Basic Analytics (read/view existing response Sheet/data).
- *
- * Rules:
- * - Super Admin is ALWAYS allowed.
- * - Admin must be active.
- * - Basic Analytics is ALLOWED if:
- *   a) Effective features contain "Basic analytics", OR
- *   b) Effective features contain "Full analytics access" (which supersedes basic).
- * - Otherwise DENIED with code: "BASIC_ANALYTICS_LOCKED".
- */
 export async function assertBasicAnalyticsAccess(
-  adminId: string | null | undefined,
-  adminEmail: string | undefined,
-  adminRole: string | undefined,
-  adminStatus: string | undefined,
+  sessionOrId: any,
+  adminEmail?: string,
+  adminRole?: string,
+  adminStatus?: string,
 ): Promise<BasicAnalyticsAccessResult> {
-  if (!adminId) {
+  const ctx = resolveContext(sessionOrId, adminEmail, adminRole, adminStatus);
+
+  if (!ctx.isAuthorized) {
     return {
       allowed: false,
-      code: 'UNAUTHORIZED',
-      reason: 'No admin record found. Please log in or contact the Super Admin.',
+      code: ctx.errorCode || 'UNAUTHORIZED',
+      reason: ctx.errorReason || 'Unauthorized.',
     };
   }
 
-  if (adminStatus !== 'ACTIVE') {
-    return {
-      allowed: false,
-      code: 'ACCOUNT_INACTIVE',
-      reason: 'Your administrator account is inactive. Please contact the Super Admin.',
-    };
-  }
-
-  const isSuperAdmin = adminRole === 'SUPER_ADMIN'
-    || (adminEmail && adminEmail.toLowerCase().trim() === SUPER_ADMIN_EMAIL);
-
-  if (isSuperAdmin) {
+  if (ctx.isSuperAdmin) {
     return { allowed: true, reason: 'Super Admin access granted.' };
   }
 
-  const billingStatus = await getAdminBillingStatus(adminId);
+  if (!ctx.collegeId) {
+    return {
+      allowed: false,
+      code: 'UNAUTHORIZED',
+      reason: 'No college tenant context found.',
+    };
+  }
+
+  const billingStatus = await getCollegeBillingStatus(ctx.collegeId);
   const hasBasic = billingStatus.hasBasicAnalytics || billingStatus.hasFullAnalytics;
 
   if (!hasBasic) {
@@ -665,11 +478,7 @@ export async function assertBasicAnalyticsAccess(
     };
   }
 
-  return {
-    allowed: true,
-    reason: 'Basic analytics access granted.',
-    billingStatus,
-  };
+  return { allowed: true, reason: 'Basic analytics access granted.', billingStatus };
 }
 
 export async function canAccessBasicAnalytics(
@@ -678,70 +487,43 @@ export async function canAccessBasicAnalytics(
   adminRole?: string,
   adminStatus?: string
 ): Promise<boolean> {
-  if (!sessionOrAdminId) return false;
-
-  if (typeof sessionOrAdminId === 'object') {
-    const session = sessionOrAdminId;
-    if (session.isSuperAdmin) return true;
-    if (!session.isAuthenticated || !session.isActive || !session.admin?.id) return false;
-    const res = await assertBasicAnalyticsAccess(
-      session.admin.id,
-      session.admin.email || session.user?.email,
-      session.admin.role,
-      session.admin.status
-    );
-    return res.allowed;
-  }
-
   const res = await assertBasicAnalyticsAccess(sessionOrAdminId, adminEmail, adminRole, adminStatus);
   return res.allowed;
 }
 
 // ====================================================================
-// 7. CENTRALIZED PDF REPORTS & EXPORTS ACCESS GATE
+// 7. CENTRALIZED PDF REPORTS ACCESS GATE
 // ====================================================================
 
-/**
- * THE ONE centralized authorization function for PDF Reports & Exports.
- *
- * Rules:
- * - Super Admin is ALWAYS allowed.
- * - Admin must be active.
- * - ALLOWED if:
- *   a) Effective features contain "Analytics PDF reports", OR
- *   b) Active Trial or Paid Plan contains "Analytics PDF reports".
- * - Otherwise DENIED with code: "PDF_EXPORT_LOCKED".
- */
 export async function assertPdfAccess(
-  adminId: string | null | undefined,
-  adminEmail: string | undefined,
-  adminRole: string | undefined,
-  adminStatus: string | undefined,
+  sessionOrId: any,
+  adminEmail?: string,
+  adminRole?: string,
+  adminStatus?: string,
 ): Promise<PdfAccessResult> {
-  if (!adminId) {
+  const ctx = resolveContext(sessionOrId, adminEmail, adminRole, adminStatus);
+
+  if (!ctx.isAuthorized) {
     return {
       allowed: false,
-      code: 'UNAUTHORIZED',
-      reason: 'No admin record found. Please log in or contact the Super Admin.',
+      code: ctx.errorCode || 'UNAUTHORIZED',
+      reason: ctx.errorReason || 'Unauthorized.',
     };
   }
 
-  if (adminStatus !== 'ACTIVE') {
-    return {
-      allowed: false,
-      code: 'ACCOUNT_INACTIVE',
-      reason: 'Your administrator account is inactive. Please contact the Super Admin.',
-    };
-  }
-
-  const isSuperAdmin = adminRole === 'SUPER_ADMIN'
-    || (adminEmail && adminEmail.toLowerCase().trim() === SUPER_ADMIN_EMAIL);
-
-  if (isSuperAdmin) {
+  if (ctx.isSuperAdmin) {
     return { allowed: true, reason: 'Super Admin access granted.' };
   }
 
-  const billingStatus = await getAdminBillingStatus(adminId);
+  if (!ctx.collegeId) {
+    return {
+      allowed: false,
+      code: 'UNAUTHORIZED',
+      reason: 'No college tenant context found.',
+    };
+  }
+
+  const billingStatus = await getCollegeBillingStatus(ctx.collegeId);
 
   if (!billingStatus.hasPdfAccess) {
     return {
@@ -752,11 +534,7 @@ export async function assertPdfAccess(
     };
   }
 
-  return {
-    allowed: true,
-    reason: 'PDF reports and exports access granted.',
-    billingStatus,
-  };
+  return { allowed: true, reason: 'PDF reports and exports access granted.', billingStatus };
 }
 
 export async function canAccessPdf(
@@ -765,55 +543,52 @@ export async function canAccessPdf(
   adminRole?: string,
   adminStatus?: string
 ): Promise<boolean> {
-  if (!sessionOrAdminId) return false;
-
-  if (typeof sessionOrAdminId === 'object') {
-    const session = sessionOrAdminId;
-    if (session.isSuperAdmin) return true;
-    if (!session.isAuthenticated || !session.isActive || !session.admin?.id) return false;
-    const res = await assertPdfAccess(
-      session.admin.id,
-      session.admin.email || session.user?.email,
-      session.admin.role,
-      session.admin.status
-    );
-    return res.allowed;
-  }
-
   const res = await assertPdfAccess(sessionOrAdminId, adminEmail, adminRole, adminStatus);
   return res.allowed;
 }
 
 // ====================================================================
-// 8. ENSURE BILLING ACCOUNT
+// 8. ENSURE COLLEGE BILLING ACCOUNT
 // ====================================================================
 
 /**
- * Ensure a billing account exists for an admin.
- * Used when approving a new admin — creates UNLOCKED + FREE billing record
- * so every normal admin automatically has the permanent FREE base plan.
+ * Ensure a billing account exists for a college tenant.
+ * Defaults to UNLOCKED + FREE so every college automatically starts
+ * with the permanent FREE base plan.
  */
-export async function ensureBillingAccount(
-  adminId: string,
+export async function ensureCollegeBillingAccount(
+  collegeId: string,
   defaults?: { accessStatus?: 'LOCKED' | 'UNLOCKED'; planType?: PlanType }
 ): Promise<void> {
+  if (!collegeId) return;
+
   const supabase = await getAdminDb();
 
   const { data: existing } = await supabase
-    .from('admin_billing_accounts')
+    .from('college_billing_accounts')
     .select('id')
-    .eq('admin_user_id', adminId)
+    .eq('college_id', collegeId)
     .maybeSingle();
 
   if (existing) return;
 
   await supabase
-    .from('admin_billing_accounts')
+    .from('college_billing_accounts')
     .insert({
-      admin_user_id: adminId,
+      college_id: collegeId,
       plan_type: defaults?.planType || 'FREE',
       access_status: defaults?.accessStatus || 'UNLOCKED',
       subscription_status: 'ACTIVE',
       started_at: new Date().toISOString(),
     });
+}
+
+/**
+ * Backward-compatible alias for ensureCollegeBillingAccount.
+ */
+export async function ensureBillingAccount(
+  collegeOrAdminId: string,
+  defaults?: { accessStatus?: 'LOCKED' | 'UNLOCKED'; planType?: PlanType }
+): Promise<void> {
+  return ensureCollegeBillingAccount(collegeOrAdminId, defaults);
 }

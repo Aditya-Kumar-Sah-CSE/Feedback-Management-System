@@ -1,6 +1,5 @@
 /**
- * Types and Interfaces for BCE Faculty Feedback Analytics & Reporting
- * Bhagalpur College of Engineering (Govt. of Bihar)
+ * Types and Interfaces for Multi-Tenant Faculty Feedback Analytics & Reporting
  */
 
 export type RatingOption = 'Excellent' | 'Very Good' | 'Good' | 'Satisfactory' | 'Unsatisfactory';
@@ -69,6 +68,7 @@ export interface FacultyGridAnalyticsItem {
 
 export interface FormAnalyticsReport {
   formId: string;
+  collegeId?: string;
   title: string;
   academicYear: string;
   branch: string;
@@ -110,6 +110,7 @@ export interface FacultyComparisonItem {
 
 export interface AggregatedAnalyticsReport {
   scopeTitle: string;
+  collegeId?: string;
   filters: {
     academicYearId?: string;
     academicYearName?: string;

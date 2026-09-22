@@ -1,4 +1,4 @@
-import type { PlanType, AdminTrialEntitlement, TrialStatus } from '@/types/database';
+import type { PlanType, CollegeTrialEntitlement, TrialStatus } from '@/types/database';
 
 // ====================================================================
 // BILLING STATUS TYPE
@@ -21,7 +21,7 @@ export interface BillingStatus {
   hasPdfAccess: boolean;
   // Trial Entitlement info
   hasActiveTrial: boolean;
-  activeTrial?: AdminTrialEntitlement | null;
+  activeTrial?: CollegeTrialEntitlement | null;
   trialStatus?: 'NONE' | TrialStatus;
   trialExpiresAt?: string | null;
   trialDaysRemaining?: number | null;

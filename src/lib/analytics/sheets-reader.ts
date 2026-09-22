@@ -1,4 +1,4 @@
-import { getGoogleServices, isGoogleConfigured } from '@/lib/google/auth';
+import { getCollegeGoogleServices } from '@/lib/google/auth';
 
 export interface RawSheetData {
   headers: string[];
@@ -8,17 +8,19 @@ export interface RawSheetData {
 
 /**
  * Fetches raw response rows from a connected Google Sheet
- * Reads from 'Form Responses' sheet (or the first sheet in the spreadsheet).
+ * Reads from 'Form Responses' sheet (or the first sheet in the spreadsheet)
+ * using the institutional credentials of the college owning the form.
  */
 export async function fetchRawSheetResponses(
-  spreadsheetId: string
+  spreadsheetId: string,
+  collegeId?: string
 ): Promise<RawSheetData> {
-  if (!isGoogleConfigured()) {
+  if (!spreadsheetId || !collegeId) {
     return { headers: [], rows: [], totalRowCount: 0 };
   }
 
   try {
-    const { sheets } = getGoogleServices();
+    const { sheets } = await getCollegeGoogleServices(collegeId);
 
     // 1. First get spreadsheet metadata to know the exact sheet name
     const meta = await sheets.spreadsheets.get({ spreadsheetId });

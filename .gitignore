@@ -18,6 +18,7 @@ test-artifacts-pdf/
 # misc
 .DS_Store
 *.pem
+scratch/
 
 # debug
 npm-debug.log*

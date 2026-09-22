@@ -23,12 +23,7 @@ export default async function AdminResultsHubPage() {
   }
 
   // Authoritative server-side analytics access check BEFORE any query/fetch
-  const access = await assertAnalyticsAccess(
-    session.admin?.id,
-    session.admin?.email || session.user?.email,
-    session.admin?.role,
-    session.admin?.status
-  );
+  const access = await assertAnalyticsAccess(session);
 
   if (!access.allowed) {
     return (
@@ -39,6 +34,22 @@ export default async function AdminResultsHubPage() {
   }
 
   const supabase = await createClient();
+
+  let formsQuery = supabase
+    .from('feedback_forms')
+    .select(`
+      *,
+      faculty:faculties(*),
+      subject:subjects(*),
+      academic_year:academic_years(*),
+      branch:branches(*),
+      semester:semesters(*)
+    `)
+    .order('created_at', { ascending: false });
+
+  if (session.activeCollegeId) {
+    formsQuery = formsQuery.eq('college_id', session.activeCollegeId);
+  }
 
   // 1. Fetch Academic Entities for Filters
   const [
@@ -54,17 +65,7 @@ export default async function AdminResultsHubPage() {
     supabase.from('semesters').select('*').order('number', { ascending: true }),
     supabase.from('faculties').select('*').order('name', { ascending: true }),
     supabase.from('subjects').select('*').order('name', { ascending: true }),
-    supabase
-      .from('feedback_forms')
-      .select(`
-        *,
-        faculty:faculties(*),
-        subject:subjects(*),
-        academic_year:academic_years(*),
-        branch:branches(*),
-        semester:semesters(*)
-      `)
-      .order('created_at', { ascending: false }),
+    formsQuery,
   ]);
 
   // 2. Fetch Initial Aggregated Analytics Report

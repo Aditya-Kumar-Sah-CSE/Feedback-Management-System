@@ -121,7 +121,7 @@ export default function AdminResetPasswordPage() {
           Create New Password
         </h2>
         <p className="mt-1.5 text-xs text-slate-400 font-medium">
-          Bhagalpur College of Engineering • Faculty Feedback Portal
+          Institutional Feedback Platform • Password Recovery
         </p>
       </div>
 

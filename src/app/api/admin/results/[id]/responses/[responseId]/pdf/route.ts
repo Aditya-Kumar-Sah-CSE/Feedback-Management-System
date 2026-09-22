@@ -5,6 +5,7 @@ import { fetchSingleResponseFromSheet } from '@/lib/google/sheets';
 import { syncFormResponsesToSheet } from '@/lib/google/sync';
 import { BCE_FEEDBACK_PARAMETERS } from '@/lib/google/template';
 import { generateStudentResponsePDF, StudentResponsePDFData } from '@/lib/analytics/pdf-generator';
+import { getCollegeBranding } from '@/lib/tenant/branding';
 import { isValidUUID } from '@/lib/validation';
 import { assertPdfAccess } from '@/lib/billing/access-control';
 
@@ -33,12 +34,7 @@ export async function GET(
     }
 
     // 2. Mandatory PDF Reports & Exports Authorization Check
-    const access = await assertPdfAccess(
-      session.admin?.id,
-      session.admin?.email || session.user?.email,
-      session.admin?.role,
-      session.admin?.status
-    );
+    const access = await assertPdfAccess(session);
 
     if (!access.allowed) {
       return NextResponse.json(
@@ -80,6 +76,7 @@ export async function GET(
       .from('feedback_forms')
       .select(`
         id,
+        college_id,
         title,
         form_type,
         google_form_id,
@@ -107,22 +104,34 @@ export async function GET(
       );
     }
 
-    // 5. Resolve response ID: could be google_response_id OR feedback_response_records.id (UUID)
+    // Verify admin authorization for this form's institution
+    if (!session.isPlatformSuperAdmin) {
+      const isMember = session.colleges?.some(
+        (c) => c.collegeId === form.college_id && c.status === 'ACTIVE'
+      );
+      if (!isMember) {
+        return NextResponse.json(
+          { error: 'Forbidden: You do not have permission to access responses for this institution.' },
+          { status: 403 }
+        );
+      }
+    }
+
+    // 5. Try resolving response from cached feedback_response_records first
     let targetGoogleResponseId = decodedResponseId;
-    let cachedRecord: any = null;
+    let cachedRecord = null;
 
     if (isValidUUID(decodedResponseId)) {
       const { data: rec } = await supabase
         .from('feedback_response_records')
         .select('*')
+        .eq('form_id', formId)
         .eq('id', decodedResponseId)
         .maybeSingle();
 
       if (rec) {
         cachedRecord = rec;
-        if (rec.google_response_id) {
-          targetGoogleResponseId = rec.google_response_id;
-        }
+        targetGoogleResponseId = rec.google_response_id || decodedResponseId;
       }
     } else {
       const { data: rec } = await supabase
@@ -149,10 +158,10 @@ export async function GET(
       );
     }
 
-    // 7. Fetch authoritative raw response from Google Sheet
-    let sheetData = await fetchSingleResponseFromSheet(sheetId, targetGoogleResponseId);
+    // 7. Fetch authoritative raw response from Google Sheet using college connection
+    let sheetData = await fetchSingleResponseFromSheet(sheetId, targetGoogleResponseId, form.college_id);
     if (!sheetData && targetGoogleResponseId !== decodedResponseId) {
-      sheetData = await fetchSingleResponseFromSheet(sheetId, decodedResponseId);
+      sheetData = await fetchSingleResponseFromSheet(sheetId, decodedResponseId, form.college_id);
     }
 
     if (!sheetData && form.google_form_id) {
@@ -162,10 +171,11 @@ export async function GET(
           googleFormId: form.google_form_id,
           googleSheetId: sheetId,
           formId,
+          callerSession: session,
         });
-        sheetData = await fetchSingleResponseFromSheet(sheetId, targetGoogleResponseId);
+        sheetData = await fetchSingleResponseFromSheet(sheetId, targetGoogleResponseId, form.college_id);
         if (!sheetData && targetGoogleResponseId !== decodedResponseId) {
-          sheetData = await fetchSingleResponseFromSheet(sheetId, decodedResponseId);
+          sheetData = await fetchSingleResponseFromSheet(sheetId, decodedResponseId, form.college_id);
         }
       } catch (syncErr) {
         console.warn('[STUDENT_RESPONSE_PDF] Sync retry failed:', syncErr);
@@ -297,7 +307,8 @@ export async function GET(
       });
     }
 
-    // 10. Generate Student Response PDF Binary
+    // 10. Generate Student Response PDF Binary with Tenant Branding
+    const branding = await getCollegeBranding(form.college_id);
     const pdfBuffer = await generateStudentResponsePDF({
       studentName,
       registrationNumber,
@@ -310,11 +321,11 @@ export async function GET(
       submissionId: targetGoogleResponseId || decodedResponseId,
       facultyEvaluations,
       generalFeedback,
-    });
+    }, branding);
 
     const safeReg = (registrationNumber || 'Student').replace(/[^a-zA-Z0-9_-]/g, '_');
     const safeRespId = targetGoogleResponseId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 10);
-    const filename = `student-response-${safeReg}-${safeRespId}.pdf`;
+    const filename = `${branding.code}-student-response-${safeReg}-${safeRespId}.pdf`;
 
     return new Response(new Uint8Array(pdfBuffer), {
       status: 200,

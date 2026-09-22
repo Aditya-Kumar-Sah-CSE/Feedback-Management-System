@@ -98,12 +98,7 @@ export default async function FeedbackFormDetailPage({
     .order('created_at', { ascending: false });
 
   // Check server-side analytics access permission
-  const analyticsAccess = await assertAnalyticsAccess(
-    session.admin?.id,
-    session.admin?.email || session.user?.email,
-    session.admin?.role,
-    session.admin?.status
-  );
+  const analyticsAccess = await assertAnalyticsAccess(session);
 
   return (
     <div className="space-y-6">

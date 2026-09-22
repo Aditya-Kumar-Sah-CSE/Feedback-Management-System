@@ -1,7 +1,5 @@
 /**
  * Student Response Confirmation Email Service
- * Bhagalpur College of Engineering (Govt. of Bihar)
- * 
  * Manages automated dispatch of submission receipts with secure response download links.
  * Explicitly tracks states: PENDING, SENT, FAILED, EMAIL_NOT_CONFIGURED.
  */
@@ -16,6 +14,7 @@ export interface SendConfirmationEmailParams {
   semester: string;
   submittedAt?: string | null;
   downloadUrl: string;
+  institutionName?: string | null;
 }
 
 export interface EmailDeliveryResult {
@@ -53,6 +52,7 @@ export async function sendStudentSubmissionConfirmationEmail(
     semester,
     submittedAt,
     downloadUrl,
+    institutionName,
   } = params;
 
   if (!studentEmail || !studentEmail.includes('@')) {
@@ -105,9 +105,8 @@ ${downloadUrl}
 
 (Note: This link is unique and cryptographically signed for your response record.)
 
-Bhagalpur College of Engineering
-Govt. of Bihar
-Feedback Management System
+${institutionName || 'Faculty Feedback Management System'}
+Academic Feedback Management System
 `.trim();
 
   // If Resend API Key is available, dispatch via Resend HTTPS API
@@ -120,7 +119,7 @@ Feedback Management System
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: process.env.EMAIL_FROM || 'BCE Feedback <noreply@bce-bgp.ac.in>',
+          from: process.env.EMAIL_FROM || 'Feedback System <noreply@feedbacksystem.internal>',
           to: studentEmail,
           subject,
           text: textContent,

@@ -15,16 +15,19 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'BCE Faculty Feedback Portal | Bhagalpur College of Engineering',
-  description: 'Official Faculty Feedback & Evaluation Management System for Bhagalpur College of Engineering (BCE BGP), Government of Bihar.',
-  keywords: ['BCE', 'BCE Bhagalpur', 'Faculty Feedback', 'Student Evaluation', 'Engineering College Bihar'],
+  title: {
+    default: 'Feedback Management System | Institutional Feedback Platform',
+    template: '%s | Feedback Management System',
+  },
+  description: 'Multi-tenant Institutional Feedback Management System. Choose your institution to access its feedback portal.',
+  keywords: ['Feedback Management System', 'Institutional Feedback', 'Faculty Feedback', 'Student Evaluation', 'Engineering Colleges'],
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'BCE Feedback',
+    title: 'FMS Feedback',
   },
-  applicationName: 'BCE Feedback',
+  applicationName: 'FMS Feedback',
   icons: {
     icon: [
       { url: '/favicon.ico', sizes: '32x32' },

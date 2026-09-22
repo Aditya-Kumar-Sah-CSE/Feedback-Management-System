@@ -11,15 +11,15 @@ async function getAdminDb() {
 }
 import { FeedbackForm, FeedbackFormStatus } from '@/types/database';
 import {
-  isGoogleConfigured,
+  isCollegeGoogleConfigured,
   getGoogleConfigStatus,
   formatGoogleErrorMessage,
-  ensureGoogleCredentialsLoaded,
 } from '@/lib/google/auth';
 import { createGoogleFeedbackForm } from '@/lib/google/forms';
 import { createFeedbackSpreadsheet } from '@/lib/google/sheets';
 import { linkFormToSpreadsheet } from '@/lib/google/linking';
 import { syncFormResponsesToSheet } from '@/lib/google/sync';
+import { FORM_CONFIRMATION_MESSAGE } from '@/lib/google/template';
 import {
   generateFeedbackFormTitle,
   generateFeedbackFormDescription,
@@ -55,10 +55,11 @@ async function logAuditAction(
 }
 
 /**
- * Check Google configuration status for the UI
+ * Check Google configuration status for the active institution in the UI
  */
 export async function getGoogleStatusAction() {
-  return getGoogleConfigStatus();
+  const session = await getAdminSession();
+  return getGoogleConfigStatus(session.activeCollegeId || undefined);
 }
 
 /**
@@ -115,6 +116,10 @@ export async function getFeedbackFormsAction(filters?: {
       semester:semesters(id, name)
     `, { count: 'exact' })
     .order('created_at', { ascending: false });
+
+  if (session.activeCollegeId) {
+    query = query.eq('college_id', session.activeCollegeId);
+  }
 
   if (filters?.academicYearId && filters.academicYearId !== 'ALL') {
     query = query.eq('academic_year_id', filters.academicYearId);
@@ -188,6 +193,16 @@ export async function getFeedbackFormByIdAction(formId: string) {
     return { success: false, error: error?.message || 'Form not found' };
   }
 
+  // Tenant authorization check
+  if (!session.isPlatformSuperAdmin && form.college_id) {
+    const isAuthorized = session.colleges.some(
+      (c) => c.collegeId === form.college_id && c.status === 'ACTIVE'
+    );
+    if (!isAuthorized) {
+      return { success: false, error: 'Forbidden: You do not have permissions to view forms from this institution.' };
+    }
+  }
+
   // Fetch form-specific audit logs
   const { data: logs } = await supabase
     .from('audit_logs')
@@ -235,12 +250,7 @@ export async function validateAndPrepareFormDraftAction(payload: CreateFormPaylo
   }
 
   // ─── BILLING ACCESS GATE ────────────────────────────────────────
-  const accessResult = await assertFormGenerationAccess(
-    session.admin?.id,
-    session.admin?.email || session.user?.email,
-    session.admin?.role,
-    session.admin?.status,
-  );
+  const accessResult = await assertFormGenerationAccess(session);
   if (!accessResult.allowed) {
     return { success: false, error: accessResult.reason };
   }
@@ -255,6 +265,20 @@ export async function validateAndPrepareFormDraftAction(payload: CreateFormPaylo
   const adminId = session.admin?.id || null;
   const adminEmail = session.admin?.email || session.user?.email || '';
   const supabase = customClient || (await getAdminDb());
+
+  const targetCollegeId = session.activeCollegeId;
+  if (!targetCollegeId) {
+    return { success: false, error: 'Unauthorized: No active institution selected for form creation.' };
+  }
+
+  const isGoogleReady = await isCollegeGoogleConfigured(targetCollegeId);
+  if (!isGoogleReady) {
+    return {
+      success: false,
+      error: 'Google Workspace is not connected for this institution. Please connect Google Workspace in Settings before generating forms.',
+      code: 'GOOGLE_CONNECTION_REQUIRED',
+    };
+  }
 
   // -------------------------------------------------------------
   // A. Multi-Faculty SEMESTER_FEEDBACK Flow
@@ -356,16 +380,6 @@ export async function validateAndPrepareFormDraftAction(payload: CreateFormPaylo
       });
     }
 
-    await ensureGoogleCredentialsLoaded();
-    if (!isGoogleConfigured()) {
-      return {
-        success: false,
-        error: 'Google authorization has expired or is not configured. Reconnect your Google account to continue.',
-        requiresReconnect: true,
-        reconnectUrl: '/api/auth/google?returnTo=/admin/dashboard/forms/create',
-      };
-    }
-
     const title = generateSemesterFormTitle({
       semesterName: semester.name,
       branchName: branch.name,
@@ -376,6 +390,7 @@ export async function validateAndPrepareFormDraftAction(payload: CreateFormPaylo
       branchName: branch.name,
       academicYearName: academicYear.name,
       facultyCount: validatedItems.length,
+      institutionName: session.activeCollege?.name,
     });
 
     const cleanSlug = `semester-feedback-${branch.code || branch.name}-${semester.name}-${academicYear.name}-${Date.now()}`
@@ -384,6 +399,7 @@ export async function validateAndPrepareFormDraftAction(payload: CreateFormPaylo
       .replace(/(^-|-$)/g, '');
 
     const draftPayload = {
+      college_id: targetCollegeId,
       title,
       description,
       academic_year_id: payload.academicYearId,
@@ -514,18 +530,6 @@ export async function validateAndPrepareFormDraftAction(payload: CreateFormPaylo
     };
   }
 
-  // Check Google API configuration
-  await ensureGoogleCredentialsLoaded();
-  if (!isGoogleConfigured()) {
-    return {
-      success: false,
-      error:
-        'Google authorization has expired or is not configured. Reconnect your Google account to continue.',
-      requiresReconnect: true,
-      reconnectUrl: '/api/auth/google?returnTo=/admin/dashboard/forms/create',
-    };
-  }
-
   const metaInputs = {
     facultyName: faculty.name,
     subjectName: `${subject.name} (${subject.code})`,
@@ -535,7 +539,10 @@ export async function validateAndPrepareFormDraftAction(payload: CreateFormPaylo
   };
 
   const title = generateFeedbackFormTitle(metaInputs);
-  const description = generateFeedbackFormDescription(metaInputs);
+  const description = generateFeedbackFormDescription({
+    ...metaInputs,
+    institutionName: session.activeCollege?.name,
+  });
 
   const cleanSlug = `${faculty.name}-${subject.code}-${semester.name}-${academicYear.name}-${Date.now()}`
     .toLowerCase()
@@ -543,6 +550,7 @@ export async function validateAndPrepareFormDraftAction(payload: CreateFormPaylo
     .replace(/(^-|-$)/g, '');
 
   const draftPayload = {
+    college_id: targetCollegeId,
     title,
     description,
     academic_year_id: payload.academicYearId,
@@ -611,21 +619,54 @@ export async function provisionGoogleFormAndSheetAction(params: {
   const adminEmail = session.admin?.email || session.user?.email || '';
   const supabase = params.client || (await getAdminDb());
 
+  // Authoritatively lookup draft form to extract institution
+  const { data: draftRecord, error: draftFetchErr } = await supabase
+    .from('feedback_forms')
+    .select('id, college_id')
+    .eq('id', params.draftFormId)
+    .maybeSingle();
+
+  if (draftFetchErr || !draftRecord) {
+    return { success: false, error: 'Draft form record not found.' };
+  }
+
+  const targetCollegeId = draftRecord.college_id;
+  if (!targetCollegeId) {
+    return { success: false, error: 'Draft form has no associated institution.' };
+  }
+
+  if (!session.isPlatformSuperAdmin) {
+    const isMember = session.colleges?.some(
+      (c: any) => c.id === targetCollegeId && c.membershipStatus === 'ACTIVE'
+    );
+    if (!isMember) {
+      return { success: false, error: 'Forbidden: You do not have permission to provision forms for this institution.' };
+    }
+  }
+
+  const isReady = await isCollegeGoogleConfigured(targetCollegeId);
+  if (!isReady) {
+    return {
+      success: false,
+      error: 'Google Workspace is not connected for this institution. Please connect an institutional Google account in Settings.',
+      code: 'GOOGLE_CONNECTION_REQUIRED',
+    };
+  }
+
   let googleFormResult;
   let googleSheetResult;
 
   try {
-    // Pre-hydrate persistent Google OAuth credentials from database
-    await ensureGoogleCredentialsLoaded();
-
     // Concurrent creation of Google Form (+ Multiple Choice Grids if items provided) and Google Sheet
     const [formResult, sheetResult] = await Promise.all([
       createGoogleFeedbackForm({
+        collegeId: targetCollegeId,
         title: params.title,
         description: params.description,
         items: params.items,
       }),
       createFeedbackSpreadsheet({
+        collegeId: targetCollegeId,
         title: params.title,
         items: params.items,
       }),
@@ -636,7 +677,9 @@ export async function provisionGoogleFormAndSheetAction(params: {
     // Link Form to Sheet
     const linkingResult = await linkFormToSpreadsheet(
       googleFormResult.formId,
-      googleSheetResult.spreadsheetId
+      googleSheetResult.spreadsheetId,
+      FORM_CONFIRMATION_MESSAGE,
+      targetCollegeId
     );
 
     // If multi-faculty items exist, save to feedback_form_items junction table
@@ -819,12 +862,22 @@ export async function updateFormStatusAction(
   // Fetch current form
   const { data: form, error: fetchErr } = await supabase
     .from('feedback_forms')
-    .select('id, title, status')
+    .select('id, title, status, college_id')
     .eq('id', formId)
     .single();
 
   if (fetchErr || !form) {
     return { success: false, error: 'Form not found' };
+  }
+
+  // Tenant authorization check
+  if (!session.isPlatformSuperAdmin && form.college_id) {
+    const isAuthorized = session.colleges.some(
+      (c) => c.collegeId === form.college_id && c.status === 'ACTIVE'
+    );
+    if (!isAuthorized) {
+      return { success: false, error: 'Forbidden: You do not have permissions to modify forms for this institution.' };
+    }
   }
 
   const currentStatus = form.status as FeedbackFormStatus;
@@ -908,12 +961,7 @@ export async function syncFormResponsesAction(formId: string) {
   }
 
   // ─── BILLING ACCESS GATE: Sheet integration & sync management ───
-  const accessResult = await assertSheetIntegrationAccess(
-    session.admin?.id,
-    session.admin?.email || session.user?.email,
-    session.admin?.role,
-    session.admin?.status,
-  );
+  const accessResult = await assertSheetIntegrationAccess(session);
   if (!accessResult.allowed) {
     return {
       success: false,
@@ -941,6 +989,16 @@ export async function syncFormResponsesAction(formId: string) {
     return { success: false, error: `Form not found: ${fetchErr?.message || ''}` };
   }
 
+  const targetCollegeId = form.college_id;
+  if (!session.isPlatformSuperAdmin) {
+    const isMember = session.colleges?.some(
+      (c: any) => c.id === targetCollegeId && c.membershipStatus === 'ACTIVE'
+    );
+    if (!isMember) {
+      return { success: false, error: 'Forbidden: You do not have permission to sync responses for this form.' };
+    }
+  }
+
   const resolvedFormId =
     form.google_form_id ||
     form.google_form_edit_url?.match(/\/forms\/d\/([a-zA-Z0-9_-]+)/)?.[1] ||
@@ -961,6 +1019,7 @@ export async function syncFormResponsesAction(formId: string) {
     googleFormId: resolvedFormId,
     googleSheetId: resolvedSheetId,
     formId,
+    callerSession: session,
   });
 
   if (!syncResult.success) {
@@ -1029,7 +1088,7 @@ export async function deleteFeedbackFormAction(formId: string) {
   // 1. Fetch form info for audit log
   const { data: form, error: fetchErr } = await supabase
     .from('feedback_forms')
-    .select('id, title, google_form_id, google_sheet_id, status')
+    .select('id, title, google_form_id, google_sheet_id, status, college_id')
     .eq('id', formId)
     .maybeSingle();
 
@@ -1039,6 +1098,16 @@ export async function deleteFeedbackFormAction(formId: string) {
 
   if (!form) {
     return { success: false, error: 'Feedback form not found or already deleted.' };
+  }
+
+  // Tenant authorization check
+  if (!session.isPlatformSuperAdmin && form.college_id) {
+    const isAuthorized = session.colleges.some(
+      (c) => c.collegeId === form.college_id && c.status === 'ACTIVE'
+    );
+    if (!isAuthorized) {
+      return { success: false, error: 'Forbidden: You do not have permissions to delete forms from this institution.' };
+    }
   }
 
   // 2. Delete the feedback form

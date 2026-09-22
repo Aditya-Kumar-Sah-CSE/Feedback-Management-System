@@ -1,15 +1,16 @@
 /**
- * Server-Side PDF Report Generator for BCE Faculty Feedback System
+ * Server-Side Multi-Tenant PDF Report Generator
  * Uses PDFKit for pure server-side, vector-sharp PDF generation.
- * Bhagalpur College of Engineering (Govt. of Bihar)
+ * Dynamically branded per college tenant.
  */
 
 import PDFDocument from 'pdfkit';
 import { FormAnalyticsReport, AggregatedAnalyticsReport } from './types';
+import { CollegeBranding, DEFAULT_BRANDING } from '@/lib/tenant/branding';
 
 // Palette Tokens
 const COLORS = {
-  primary: '#1B365D', // BCE Navy
+  primary: '#1B365D', // Deep Navy default
   secondary: '#334155', // Slate 700
   accent: '#2563EB', // Blue 600
   success: '#059669', // Emerald 600
@@ -32,31 +33,51 @@ function streamToBuffer(doc: PDFKit.PDFDocument): Promise<Buffer> {
 }
 
 /**
- * Draws standardized BCE Header banner
+ * Draws standardized multi-tenant Header banner
  */
-function drawHeader(doc: PDFKit.PDFDocument, subtitle: string) {
+function drawHeader(doc: PDFKit.PDFDocument, subtitle: string, branding?: CollegeBranding) {
   const pageWidth = 595.28; // A4 width in pt
   const margin = 36;
   const contentWidth = pageWidth - margin * 2;
 
+  const brand = branding || DEFAULT_BRANDING;
+  const primaryColor = brand.primaryColor || COLORS.primary;
+  const accentColor = brand.accentColor || COLORS.accent;
+
   // Top decorative color bar
-  doc.rect(margin, 30, contentWidth, 5).fill(COLORS.accent);
+  doc.rect(margin, 30, contentWidth, 5).fill(accentColor);
 
   // Institution Header
+  const institutionName = (brand.name || DEFAULT_BRANDING.name).toUpperCase();
+  const fontSize = institutionName.length > 45 ? 12 : institutionName.length > 30 ? 14 : 16;
   doc
     .font('Helvetica-Bold')
-    .fontSize(16)
-    .fillColor(COLORS.primary)
-    .text('BHAGALPUR COLLEGE OF ENGINEERING', margin, 42, {
+    .fontSize(fontSize)
+    .fillColor(primaryColor)
+    .text(institutionName, margin, 42, {
       align: 'center',
       width: contentWidth,
     });
+
+  const sublineParts: string[] = [];
+  if (brand.affiliatedUniversity) {
+    sublineParts.push(brand.affiliatedUniversity);
+  }
+  if (brand.establishedYear) {
+    sublineParts.push(`Established ${brand.establishedYear}`);
+  }
+  if (sublineParts.length === 0 && brand.tagline) {
+    sublineParts.push(brand.tagline);
+  }
+  const institutionSubline = sublineParts.length > 0
+    ? sublineParts.join(' • ')
+    : (brand.address || 'Confidential Institutional Assessment Report');
 
   doc
     .font('Helvetica')
     .fontSize(8.5)
     .fillColor(COLORS.textMuted)
-    .text('Department of Science & Technology, Government of Bihar • Established 1960', margin, 62, {
+    .text(institutionSubline, margin, 62, {
       align: 'center',
       width: contentWidth,
     });
@@ -82,7 +103,7 @@ function drawHeader(doc: PDFKit.PDFDocument, subtitle: string) {
 /**
  * Draws Standardized Footer
  */
-function drawFooter(doc: PDFKit.PDFDocument, pageNum: number, totalPages: number) {
+function drawFooter(doc: PDFKit.PDFDocument, pageNum: number, totalPages: number, branding?: CollegeBranding) {
   const margin = 36;
   const pageWidth = 595.28;
   const pageHeight = 841.89; // A4 height
@@ -98,12 +119,15 @@ function drawFooter(doc: PDFKit.PDFDocument, pageNum: number, totalPages: number
     .lineTo(pageWidth - margin, pageHeight - 42)
     .stroke();
 
+  const brand = branding || DEFAULT_BRANDING;
+  const footerText = `${brand.name} • Confidential Institutional Assessment Report • Student submissions are 100% anonymous`;
+
   doc
     .font('Helvetica')
     .fontSize(7.5)
     .fillColor(COLORS.textMuted)
     .text(
-      'BCE Bhagalpur Faculty Feedback Management System • Confidential Institutional Assessment Report • Student submissions are 100% anonymous',
+      footerText,
       margin,
       pageHeight - 34,
       { width: pageWidth - margin * 2 - 60, align: 'left' }
@@ -304,17 +328,19 @@ function renderMetadataGrid(
  * Generates an Individual Faculty Feedback Report PDF
  */
 export async function generateIndividualFacultyPDF(
-  report: FormAnalyticsReport
+  report: FormAnalyticsReport,
+  branding?: CollegeBranding
 ): Promise<Buffer> {
+  const brand = branding || DEFAULT_BRANDING;
   const doc = new PDFDocument({
     size: 'A4',
     margin: 36,
     autoFirstPage: true,
     info: {
       Title: `Faculty Feedback Report — ${report.facultyName} — ${report.subjectCode}`,
-      Author: 'Bhagalpur College of Engineering',
+      Author: brand.name,
       Subject: 'Faculty Evaluation Report',
-      Keywords: 'BCE, Feedback, Faculty Evaluation',
+      Keywords: `${brand.code}, Feedback, Faculty Evaluation`,
     },
   });
 
@@ -324,7 +350,7 @@ export async function generateIndividualFacultyPDF(
   const contentWidth = pageWidth - margin * 2;
 
   // Page 1 Header
-  drawHeader(doc, 'Faculty Feedback Evaluation Report');
+  drawHeader(doc, 'Faculty Feedback Evaluation Report', brand);
 
   let currentY = 104;
 
@@ -423,7 +449,7 @@ export async function generateIndividualFacultyPDF(
       currentY + 34,
       { width: contentWidth - 40, align: 'center' }
     );
-    drawFooter(doc, 1, 1);
+    drawFooter(doc, 1, 1, brand);
     doc.end();
     return bufferPromise;
   }
@@ -593,7 +619,7 @@ export async function generateIndividualFacultyPDF(
   });
 
   // Draw Footer
-  drawFooter(doc, 1, 1);
+  drawFooter(doc, 1, 1, brand);
 
   doc.end();
   return bufferPromise;
@@ -603,17 +629,19 @@ export async function generateIndividualFacultyPDF(
  * Generates an Institutional / Scope Aggregated Feedback Report PDF
  */
 export async function generateOverallFeedbackPDF(
-  report: AggregatedAnalyticsReport
+  report: AggregatedAnalyticsReport,
+  branding?: CollegeBranding
 ): Promise<Buffer> {
+  const brand = branding || DEFAULT_BRANDING;
   const doc = new PDFDocument({
     size: 'A4',
     margin: 36,
     autoFirstPage: true,
     info: {
       Title: `Overall Feedback Analysis Report — ${report.scopeTitle}`,
-      Author: 'Bhagalpur College of Engineering',
+      Author: brand.name,
       Subject: 'Institutional Feedback Report',
-      Keywords: 'BCE, Feedback, Institutional Evaluation',
+      Keywords: `${brand.code}, Feedback, Institutional Evaluation`,
     },
   });
 
@@ -623,7 +651,7 @@ export async function generateOverallFeedbackPDF(
   const contentWidth = pageWidth - margin * 2;
 
   // Header
-  drawHeader(doc, 'Institutional Feedback Analytics Report');
+  drawHeader(doc, 'Institutional Feedback Analytics Report', brand);
 
   let currentY = 104;
 
@@ -641,7 +669,7 @@ export async function generateOverallFeedbackPDF(
       left: { label: 'Target Faculty: ', value: report.filters.facultyName || 'All Faculty Members' },
       right: {
         label: 'Evaluation Date: ',
-        value: `${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} • BCE QA`,
+        value: `${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} • ${brand.code} QA`,
       },
     },
   ];
@@ -706,7 +734,7 @@ export async function generateOverallFeedbackPDF(
       currentY + 34,
       { width: contentWidth - 40, align: 'center' }
     );
-    drawFooter(doc, 1, 1);
+    drawFooter(doc, 1, 1, brand);
     doc.end();
     return bufferPromise;
   }
@@ -839,7 +867,7 @@ export async function generateOverallFeedbackPDF(
   });
 
   // Footer on Page 1
-  drawFooter(doc, 1, 1);
+  drawFooter(doc, 1, 1, brand);
 
   doc.end();
   return bufferPromise;
@@ -854,17 +882,19 @@ export async function generateOverallFeedbackPDF(
  * Compares all evaluated teachers/subjects for the semester cohort without exposing PII.
  */
 export async function generateSemesterComparativePDF(
-  report: FormAnalyticsReport
+  report: FormAnalyticsReport,
+  branding?: CollegeBranding
 ): Promise<Buffer> {
+  const brand = branding || DEFAULT_BRANDING;
   const doc = new PDFDocument({
     size: 'A4',
     margin: 36,
     autoFirstPage: true,
     info: {
       Title: `Semester Feedback Comparative Report — ${report.branch} — ${report.semester}`,
-      Author: 'Bhagalpur College of Engineering',
+      Author: brand.name,
       Subject: 'Semester Multi-Faculty Comparative Evaluation Report',
-      Keywords: 'BCE, Semester Feedback, Multi-Faculty, Comparative',
+      Keywords: `${brand.code}, Semester Feedback, Multi-Faculty, Comparative`,
     },
   });
 
@@ -876,7 +906,7 @@ export async function generateSemesterComparativePDF(
   let currentPage = 1;
 
   // Header
-  drawHeader(doc, 'Semester Feedback Comparative Evaluation Report');
+  drawHeader(doc, 'Semester Feedback Comparative Evaluation Report', brand);
 
   let currentY = 104;
 
@@ -903,7 +933,7 @@ export async function generateSemesterComparativePDF(
       },
     },
     {
-      left: { label: 'System: ', value: 'BCE Faculty Feedback Management System' },
+      left: { label: 'System: ', value: `${brand.name} Feedback System` },
       right: {
         label: 'Report Generated: ',
         value: new Date().toLocaleDateString('en-IN', {
@@ -1052,10 +1082,10 @@ export async function generateSemesterComparativePDF(
 
   // Check if remaining tables need a second page
   if (currentY + 280 > pageHeight - 60) {
-    drawFooter(doc, currentPage, 2);
+    drawFooter(doc, currentPage, 2, brand);
     doc.addPage();
     currentPage = 2;
-    drawHeader(doc, 'Semester Feedback Comparative Evaluation Report');
+    drawHeader(doc, 'Semester Feedback Comparative Evaluation Report', brand);
     currentY = 104;
   }
 
@@ -1203,7 +1233,7 @@ export async function generateSemesterComparativePDF(
     align: 'right',
   });
 
-  drawFooter(doc, currentPage, currentPage);
+  drawFooter(doc, currentPage, currentPage, brand);
 
   doc.end();
   return bufferPromise;
@@ -1240,17 +1270,19 @@ export interface StudentResponsePDFData {
  * Zero PII leakage of other students, zero institutional analytics, zero raw sheets.
  */
 export async function generateStudentResponsePDF(
-  data: StudentResponsePDFData
+  data: StudentResponsePDFData,
+  branding?: CollegeBranding
 ): Promise<Buffer> {
+  const brand = branding || DEFAULT_BRANDING;
   const doc = new PDFDocument({
     size: 'A4',
     margin: 36,
     autoFirstPage: true,
     info: {
       Title: `Feedback Submission Record — ${data.studentEmail}`,
-      Author: 'Bhagalpur College of Engineering',
+      Author: brand.name,
       Subject: 'Student Feedback Submission Receipt',
-      Keywords: 'BCE, Student Response, Feedback Receipt',
+      Keywords: `${brand.code}, Student Response, Feedback Receipt`,
     },
   });
 
@@ -1263,7 +1295,7 @@ export async function generateStudentResponsePDF(
   let currentPage = 1;
 
   // Header
-  drawHeader(doc, 'Student Feedback Submission Record');
+  drawHeader(doc, 'Student Feedback Submission Record', brand);
 
   let currentY = 104;
 
@@ -1348,10 +1380,10 @@ export async function generateStudentResponsePDF(
   for (const evaluation of data.facultyEvaluations) {
     // Check if we need a page break (each faculty grid table takes ~190pt)
     if (currentY + 190 > pageHeight - margin - 50) {
-      drawFooter(doc, currentPage, currentPage); // Note: estimated total
+      drawFooter(doc, currentPage, currentPage, brand); // Note: estimated total
       doc.addPage();
       currentPage++;
-      drawHeader(doc, 'Student Feedback Submission Record');
+      drawHeader(doc, 'Student Feedback Submission Record', brand);
       currentY = 104;
     }
 
@@ -1410,10 +1442,10 @@ export async function generateStudentResponsePDF(
   // General Feedback (if present)
   if (data.generalFeedback && data.generalFeedback.trim()) {
     if (currentY + 80 > pageHeight - margin - 50) {
-      drawFooter(doc, currentPage, currentPage);
+      drawFooter(doc, currentPage, currentPage, brand);
       doc.addPage();
       currentPage++;
-      drawHeader(doc, 'Student Feedback Submission Record');
+      drawHeader(doc, 'Student Feedback Submission Record', brand);
       currentY = 104;
     }
 
@@ -1438,14 +1470,14 @@ export async function generateStudentResponsePDF(
       currentY + 6
     );
     doc.font('Helvetica').fontSize(7).fillColor(COLORS.textMuted).text(
-      'This document confirms official submission of your semester feedback in the BCE Faculty Feedback System. Submitted responses are aggregated impartially for academic quality enhancement.',
+      `This document confirms official submission of your semester feedback in the ${brand.name}. Submitted responses are aggregated impartially for academic quality enhancement.`,
       margin + 10,
       currentY + 16,
       { width: contentWidth - 20 }
     );
   }
 
-  drawFooter(doc, currentPage, currentPage);
+  drawFooter(doc, currentPage, currentPage, brand);
   doc.end();
   return bufferPromise;
 }

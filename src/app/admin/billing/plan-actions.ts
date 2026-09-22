@@ -25,7 +25,7 @@ async function logAudit(
 ) {
   try {
     await supabase!.from('audit_logs').insert({
-      admin_id: actor.adminId || null,
+      actor_user_id: actor.adminId || null,
       actor_email: actor.email || '',
       action,
       entity_type: entityType,
@@ -357,7 +357,7 @@ export async function deleteBillingPlanAction(planId: string) {
 
   // Check if plan is referenced by any payment request
   const { data: usedByPayment } = await supabase
-    .from('payment_requests')
+    .from('college_payment_requests')
     .select('id')
     .eq('billing_plan_id', planId)
     .limit(1)
@@ -370,9 +370,9 @@ export async function deleteBillingPlanAction(planId: string) {
     };
   }
 
-  // Also check by slug in plan_type for legacy records
+  // Also check by slug in plan_type
   const { data: usedByLegacy } = await supabase
-    .from('payment_requests')
+    .from('college_payment_requests')
     .select('id')
     .eq('plan_type', plan.slug)
     .limit(1)
@@ -385,18 +385,18 @@ export async function deleteBillingPlanAction(planId: string) {
     };
   }
 
-  // Also check admin_billing_accounts using this plan_type
+  // Also check college_billing_accounts using this plan
   const { data: usedByBilling } = await supabase
-    .from('admin_billing_accounts')
+    .from('college_billing_accounts')
     .select('id')
-    .eq('plan_type', plan.slug)
+    .or(`current_plan_id.eq.${planId},plan_type.eq.${plan.slug}`)
     .limit(1)
     .maybeSingle();
 
   if (usedByBilling) {
     return {
       success: false,
-      error: 'This plan is assigned to admin accounts. Disable it instead of deleting.',
+      error: 'This plan is assigned to college billing accounts. Disable it instead of deleting.',
     };
   }
 

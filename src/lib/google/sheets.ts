@@ -1,4 +1,4 @@
-import { executeWithGoogleOAuthRetry } from './auth';
+import { executeWithCollegeGoogleOAuthRetry } from './auth';
 import { BCE_FEEDBACK_PARAMETERS, MultiFacultyGridItem } from './template';
 
 export interface CreateSheetResult {
@@ -55,13 +55,14 @@ export function buildMultiFacultySheetHeaders(items: MultiFacultyGridItem[]): st
 
 /**
  * Creates a new Google Spreadsheet for feedback responses and styles the header row.
- * Uses persistent database credentials with automatic OAuth single-retry.
+ * Authenticates using the institutional Google connection of collegeId.
  */
 export async function createFeedbackSpreadsheet(params: {
+  collegeId: string;
   title: string;
   items?: MultiFacultyGridItem[];
 }): Promise<CreateSheetResult> {
-  return executeWithGoogleOAuthRetry(async ({ sheets }) => {
+  return executeWithCollegeGoogleOAuthRetry(params.collegeId, async ({ sheets }) => {
     const sheetTitle = `Responses — ${params.title}`;
 
     // 1. Create Spreadsheet
@@ -98,7 +99,7 @@ export async function createFeedbackSpreadsheet(params: {
 
     const lastColLetter = getColumnLetter(targetHeaders.length);
 
-    // 2. Initialize Header Row
+    // 2. Populate Headers
     await sheets.spreadsheets.values.update({
       spreadsheetId,
       range: `'Form Responses'!A1:${lastColLetter}1`,
@@ -108,7 +109,7 @@ export async function createFeedbackSpreadsheet(params: {
       },
     });
 
-    // 3. Apply professional styling to header row (bold, dark navy background, white text)
+    // 3. Apply Premium Header Styling (Dark Navy #0B192C with White Bold Text)
     try {
       await sheets.spreadsheets.batchUpdate({
         spreadsheetId,
@@ -126,23 +127,36 @@ export async function createFeedbackSpreadsheet(params: {
                 cell: {
                   userEnteredFormat: {
                     backgroundColor: {
-                      red: 0.1,
-                      green: 0.18,
-                      blue: 0.36, // Navy BCE tone
+                      red: 11 / 255,
+                      green: 25 / 255,
+                      blue: 44 / 255,
                     },
                     textFormat: {
+                      bold: true,
                       foregroundColor: {
                         red: 1.0,
                         green: 1.0,
                         blue: 1.0,
                       },
-                      bold: true,
                       fontSize: 10,
                     },
                     horizontalAlignment: 'CENTER',
+                    verticalAlignment: 'MIDDLE',
+                    wrapStrategy: 'WRAP',
                   },
                 },
-                fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)',
+                fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)',
+              },
+            },
+            {
+              updateSheetProperties: {
+                properties: {
+                  sheetId: gridSheetId,
+                  gridProperties: {
+                    frozenRowCount: 1,
+                  },
+                },
+                fields: 'gridProperties.frozenRowCount',
               },
             },
             {
@@ -159,8 +173,7 @@ export async function createFeedbackSpreadsheet(params: {
         },
       });
     } catch (styleErr) {
-      // Non-fatal if styling fails on restricted service accounts
-      console.warn('Google Sheet header styling warning:', styleErr);
+      console.warn('Non-fatal: Header styling failed on spreadsheet:', styleErr);
     }
 
     return {
@@ -175,11 +188,12 @@ export async function createFeedbackSpreadsheet(params: {
  */
 export async function appendResponsesToSheet(
   spreadsheetId: string,
-  rows: (string | number)[][]
+  rows: (string | number)[][],
+  collegeId: string
 ) {
   if (rows.length === 0) return { updatedRows: 0 };
 
-  return executeWithGoogleOAuthRetry(async ({ sheets }) => {
+  return executeWithCollegeGoogleOAuthRetry(collegeId, async ({ sheets }) => {
     const lastColLetter = getColumnLetter(FEEDBACK_SHEET_HEADERS.length);
 
     const res = await sheets.spreadsheets.values.append({
@@ -201,9 +215,12 @@ export async function appendResponsesToSheet(
 /**
  * Reads existing response IDs from the sheet to avoid duplicate sync writes
  */
-export async function getExistingSheetResponseIds(spreadsheetId: string): Promise<Set<string>> {
+export async function getExistingSheetResponseIds(
+  spreadsheetId: string,
+  collegeId: string
+): Promise<Set<string>> {
   try {
-    return await executeWithGoogleOAuthRetry(async ({ sheets }) => {
+    return await executeWithCollegeGoogleOAuthRetry(collegeId, async ({ sheets }) => {
       const headerRes = await sheets.spreadsheets.values.get({
         spreadsheetId,
         range: "'Form Responses'!1:1",
@@ -235,10 +252,11 @@ export async function getExistingSheetResponseIds(spreadsheetId: string): Promis
  */
 export async function fetchSingleResponseFromSheet(
   spreadsheetId: string,
-  responseId: string
+  responseId: string,
+  collegeId: string
 ): Promise<{ headers: string[]; row: string[] } | null> {
   try {
-    return await executeWithGoogleOAuthRetry(async ({ sheets }) => {
+    return await executeWithCollegeGoogleOAuthRetry(collegeId, async ({ sheets }) => {
       let rows: any[][] = [];
       try {
         const res = await sheets.spreadsheets.values.get({
@@ -283,4 +301,3 @@ export async function fetchSingleResponseFromSheet(
     return null;
   }
 }
-

@@ -112,7 +112,7 @@ export function PwaInstallPrompt() {
             </div>
             <div>
               <h3 className="text-xs font-bold text-white tracking-tight">
-                Install BCE Feedback App
+                Install Feedback App
               </h3>
               <p className="text-[11px] text-slate-300 leading-tight">
                 Access evaluations anytime right from your home screen.
