@@ -90,7 +90,7 @@ export async function GET(request: Request) {
 
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: 'offline',
-    prompt: 'consent', // Force consent prompt to guarantee fresh refresh token generation
+    prompt: 'consent select_account', // Force account selector and consent to guarantee intended Google account selection
     scope: GOOGLE_SCOPES,
     state,
   });

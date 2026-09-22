@@ -203,7 +203,7 @@ export function verifyOAuthState(stateRaw: string | null): OAuthStatePayload | n
  * Internal server-only helper to fetch raw refresh token for a college.
  * NEVER return this to client components, API responses, or UI.
  */
-async function getCollegeGoogleCredentials(
+export async function getCollegeGoogleCredentials(
   collegeId: string
 ): Promise<CollegeGoogleCredentialsInternal | null> {
   if (!collegeId) return null;
