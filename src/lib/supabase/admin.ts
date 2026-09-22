@@ -40,7 +40,7 @@ function loadServiceKeyIfNeeded(): string | undefined {
  * Returns null if the service role key is not configured, allowing safe fallback to the user session client.
  */
 export function createAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://cblbvsvftltothhrzehw.supabase.co';
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://txerarcajxjzxifanzxw.supabase.co';
   const serviceKey = loadServiceKeyIfNeeded();
 
   if (!serviceKey) {

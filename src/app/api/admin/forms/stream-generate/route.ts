@@ -39,8 +39,8 @@ export async function POST(req: NextRequest) {
   const { data: { session: authSession } } = await sessionClient.auth.getSession();
   const accessToken = authSession?.access_token;
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://cblbvsvftltothhrzehw.supabase.co';
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_1wMh7c9tkiD3NgM_BYLLQg_KOxX46za';
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://txerarcajxjzxifanzxw.supabase.co';
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_BaBiHYfqG1rIf0ns3b-alQ_fqNRPoHe';
 
   const authenticatedClient = accessToken
     ? createSupabaseClient(supabaseUrl, supabaseAnonKey, {

@@ -99,7 +99,7 @@ Tables established with Row Level Security (RLS):
 2. **Environment Variables**:
    Create `.env.local` with:
    ```env
-   NEXT_PUBLIC_SUPABASE_URL=https://cblbvsvftltothhrzehw.supabase.co
+   NEXT_PUBLIC_SUPABASE_URL=https://txerarcajxjzxifanzxw.supabase.co
    NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_...
    SUPER_ADMIN_EMAIL=iambestadi@gmail.com
    ```
