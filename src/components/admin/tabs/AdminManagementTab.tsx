@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import type { Admin, AdminRequest } from '@/types/database';
 import { useHydrated, formatDateShort, formatTime } from '@/lib/hooks/use-hydrated';
-import { isPrimarySuperAdmin } from '@/lib/auth/admin-auth';
+import { isPrimarySuperAdmin } from '@/lib/auth/admin-auth-shared';
 
 interface Props {
   adminRequests: AdminRequest[];

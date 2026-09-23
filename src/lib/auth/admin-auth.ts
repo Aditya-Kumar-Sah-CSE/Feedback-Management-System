@@ -8,19 +8,17 @@ import type {
   MembershipStatus,
 } from '@/types/auth';
 
+// Re-export client-safe helpers so existing server-side imports continue to work
+export {
+  SUPER_ADMIN_EMAIL,
+  PRIMARY_SUPER_ADMIN_EMAIL,
+  PRIMARY_SUPER_ADMIN_ID,
+  isPrimarySuperAdmin,
+} from './admin-auth-shared';
+
 export const ACTIVE_TENANT_COOKIE = 'fms_active_tenant_id';
 
 export type AdminAuthResult = AdminSession;
-
-/**
- * Super Admin email configuration used only for bootstrapping/recovery,
- * NEVER as the canonical authorization identity.
- */
-export const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'iambestadi@gmail.com')
-  .toLowerCase()
-  .trim();
-export const PRIMARY_SUPER_ADMIN_EMAIL = 'iambestadi@gmail.com';
-export const PRIMARY_SUPER_ADMIN_ID = 'e606b509-7864-4150-8666-a6e47a63abc4';
 
 /**
  * Centralized helper: checks if a session, admin object, or role represents a Super Admin.
@@ -44,30 +42,6 @@ export function isSuperAdmin(
       const norm = String(sessionOrRole.role).toUpperCase().trim();
       return norm === 'SUPER_ADMIN' || norm === 'PLATFORM_SUPER_ADMIN';
     }
-  }
-  return false;
-}
-
-/**
- * Checks whether an admin record or session represents the immutable Primary Super Admin.
- */
-export function isPrimarySuperAdmin(
-  adminOrSession?:
-    | { email?: string; user_id?: string | null; id?: string; userId?: string }
-    | AdminSession
-    | null
-): boolean {
-  if (!adminOrSession) return false;
-  const email = (adminOrSession.email || '').toLowerCase().trim();
-  if (email === PRIMARY_SUPER_ADMIN_EMAIL || email === SUPER_ADMIN_EMAIL) {
-    return true;
-  }
-  const uid =
-    ('userId' in adminOrSession ? adminOrSession.userId : null) ||
-    ('user_id' in adminOrSession ? adminOrSession.user_id : null) ||
-    ('id' in adminOrSession ? adminOrSession.id : null);
-  if (uid && uid === PRIMARY_SUPER_ADMIN_ID) {
-    return true;
   }
   return false;
 }
