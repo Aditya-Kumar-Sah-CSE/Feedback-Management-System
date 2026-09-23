@@ -98,7 +98,7 @@ export default async function AdminDashboardLayout({
             </div>
 
             <Link
-              href="/"
+              href={activeCollege ? `/${activeCollege.slug}` : '/'}
               target="_blank"
               className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 bg-slate-800/80 hover:bg-slate-800 hover:text-white border border-slate-700 transition-colors"
               title="View Public Portal"

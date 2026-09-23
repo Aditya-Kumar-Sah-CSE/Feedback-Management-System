@@ -31,6 +31,7 @@ interface Props {
   pendingRequestsCount?: number;
   onSignOut: () => void;
   activeCollegeName?: string;
+  publicSlug?: string;
 }
 
 export function AdminMobileNav({
@@ -42,6 +43,7 @@ export function AdminMobileNav({
   pendingRequestsCount = 0,
   onSignOut,
   activeCollegeName,
+  publicSlug,
 }: Props) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -223,7 +225,7 @@ export function AdminMobileNav({
             </Link>
 
             <Link
-              href="/"
+              href={publicSlug ? `/${publicSlug}` : '/'}
               target="_blank"
               onClick={() => setIsOpen(false)}
               className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
