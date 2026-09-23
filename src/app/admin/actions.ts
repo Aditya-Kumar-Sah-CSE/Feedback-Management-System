@@ -41,8 +41,8 @@ async function logAuditAction(
 
 export async function approveAdminRequestAction(requestId: string) {
   const session = await getAdminSession();
-  if (!session.isAuthenticated || !session.isSuperAdmin) {
-    return { success: false, error: 'Only an authorized administrator can approve requests.' };
+  if (!session.isAuthenticated) {
+    return { success: false, error: 'Authentication required.' };
   }
 
   const supabase = await getAdminDb();
@@ -55,6 +55,17 @@ export async function approveAdminRequestAction(requestId: string) {
     .single();
 
   if (collegeReq) {
+    // Platform Super Admin OR active College Admin of this college
+    const canManageCollege =
+      session.isPlatformSuperAdmin ||
+      session.colleges.some(
+        (c) => c.collegeId === collegeReq.college_id && c.status === 'ACTIVE'
+      );
+
+    if (!canManageCollege) {
+      return { success: false, error: 'Only an authorized administrator for this institution can approve requests.' };
+    }
+
     if (collegeReq.status === 'APPROVED') {
       return { success: false, error: 'This administrator request has already been approved.' };
     }
@@ -136,8 +147,8 @@ export async function approveAdminRequestAction(requestId: string) {
 
 export async function rejectAdminRequestAction(requestId: string) {
   const session = await getAdminSession();
-  if (!session.isAuthenticated || !session.isSuperAdmin) {
-    return { success: false, error: 'Only an authorized administrator can reject requests.' };
+  if (!session.isAuthenticated) {
+    return { success: false, error: 'Authentication required.' };
   }
 
   const supabase = await getAdminDb();
@@ -150,6 +161,17 @@ export async function rejectAdminRequestAction(requestId: string) {
     .single();
 
   if (collegeReq) {
+    // Platform Super Admin OR active College Admin of this college
+    const canManageCollege =
+      session.isPlatformSuperAdmin ||
+      session.colleges.some(
+        (c) => c.collegeId === collegeReq.college_id && c.status === 'ACTIVE'
+      );
+
+    if (!canManageCollege) {
+      return { success: false, error: 'Only an authorized administrator for this institution can reject requests.' };
+    }
+
     if (collegeReq.status === 'REJECTED') {
       return { success: false, error: 'This administrator request has already been rejected.' };
     }
@@ -859,6 +881,199 @@ export async function updateSemesterAction(
   return { success: true };
 }
 
+export async function bulkSetupSemestersAction(data: {
+  totalSemesters: 6 | 8;
+  collegeId?: string;
+}) {
+  const session = await getAdminSession();
+  if (!session.isAuthenticated || !session.isActive) {
+    return { success: false, error: 'Unauthorized.' };
+  }
+
+  let authorizedCollegeId: string;
+  try {
+    authorizedCollegeId = await resolveAuthorizedCollegeId(session, data.collegeId);
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Unable to determine the active institution. Please select an institution and try again.' };
+  }
+
+  const total = Number(data.totalSemesters);
+  if (total !== 6 && total !== 8) {
+    return { success: false, error: 'Standard curriculum structure only supports 6 or 8 semesters.' };
+  }
+
+  const supabase = await getAdminDb();
+
+  // Fetch existing semesters for this college
+  const { data: existingSemesters, error: fetchErr } = await supabase
+    .from('semesters')
+    .select('id, semester_number, name')
+    .eq('college_id', authorizedCollegeId);
+
+  if (fetchErr) {
+    return { success: false, error: fetchErr.message };
+  }
+
+  const existingMap = new Map((existingSemesters || []).map((s) => [s.semester_number, s]));
+  const toInsert: Array<{
+    college_id: string;
+    name: string;
+    year_number: number;
+    semester_number: number;
+    is_active: boolean;
+  }> = [];
+
+  for (let s = 1; s <= total; s++) {
+    if (!existingMap.has(s)) {
+      toInsert.push({
+        college_id: authorizedCollegeId,
+        name: `Semester ${s}`,
+        year_number: Math.ceil(s / 2),
+        semester_number: s,
+        is_active: true,
+      });
+    }
+  }
+
+  if (toInsert.length > 0) {
+    const { error: insertErr } = await supabase.from('semesters').insert(toInsert);
+    if (insertErr) {
+      return { success: false, error: insertErr.message };
+    }
+  }
+
+  // Fetch complete sorted list for this college
+  const { data: updatedList, error: listErr } = await supabase
+    .from('semesters')
+    .select('id, name, year_number, semester_number, is_active, created_at')
+    .eq('college_id', authorizedCollegeId)
+    .order('semester_number', { ascending: true });
+
+  if (listErr) {
+    return { success: false, error: listErr.message };
+  }
+
+  await logAuditAction(
+    supabase,
+    { adminId: session.admin?.id, email: session.user?.email },
+    'BULK_SETUP_SEMESTERS',
+    'semesters',
+    authorizedCollegeId,
+    `Configured ${total}-semester curriculum pattern in institution ${authorizedCollegeId}`
+  );
+
+  revalidateTag(ACADEMIC_CACHE_TAG);
+  revalidateTag(`academic_masters_${authorizedCollegeId}`);
+  revalidatePath('/admin/dashboard');
+  revalidatePath('/');
+
+  return { success: true, count: toInsert.length, semesters: updatedList || [] };
+}
+
+export async function deleteSemesterAction(id: string, targetCollegeId?: string) {
+  const session = await getAdminSession();
+  if (!session.isAuthenticated || !session.isActive) {
+    return { success: false, error: 'Unauthorized.' };
+  }
+
+  if (!isValidUUID(id)) {
+    return { success: false, error: 'Invalid semester ID.' };
+  }
+
+  let authorizedCollegeId: string;
+  try {
+    authorizedCollegeId = await resolveAuthorizedCollegeId(session, targetCollegeId);
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Unauthorized: Target institution resolution failed.' };
+  }
+
+  const supabase = await getAdminDb();
+
+  const { data: targetSem, error: fetchErr } = await supabase
+    .from('semesters')
+    .select('id, college_id, name, semester_number')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (fetchErr || !targetSem) {
+    return { success: false, error: 'Semester not found.' };
+  }
+
+  if (!session.isPlatformSuperAdmin && targetSem.college_id !== authorizedCollegeId) {
+    return { success: false, error: 'Forbidden: You cannot delete a semester belonging to another institution.' };
+  }
+
+  const effectiveCollegeId = targetSem.college_id;
+
+  // 1. Dependency check: feedback_forms
+  const { count: formsCount } = await supabase
+    .from('feedback_forms')
+    .select('id', { count: 'exact', head: true })
+    .eq('semester_id', id)
+    .eq('college_id', effectiveCollegeId);
+
+  if (formsCount && formsCount > 0) {
+    return {
+      success: false,
+      error: `Cannot delete "${targetSem.name}": ${formsCount} feedback form(s) are linked to it. Deactivate the semester instead.`,
+    };
+  }
+
+  // 2. Dependency check: faculty_subject_assignments
+  const { count: assignCount } = await supabase
+    .from('faculty_subject_assignments')
+    .select('id', { count: 'exact', head: true })
+    .eq('semester_id', id)
+    .eq('college_id', effectiveCollegeId);
+
+  if (assignCount && assignCount > 0) {
+    return {
+      success: false,
+      error: `Cannot delete "${targetSem.name}": ${assignCount} faculty-subject assignment(s) are linked to it.`,
+    };
+  }
+
+  // 3. Dependency check: subjects
+  const { count: subCount } = await supabase
+    .from('subjects')
+    .select('id', { count: 'exact', head: true })
+    .eq('semester_id', id)
+    .eq('college_id', effectiveCollegeId);
+
+  if (subCount && subCount > 0) {
+    return {
+      success: false,
+      error: `Cannot delete "${targetSem.name}": ${subCount} course subject(s) belong to this semester.`,
+    };
+  }
+
+  const { error: delErr } = await supabase
+    .from('semesters')
+    .delete()
+    .eq('id', id)
+    .eq('college_id', effectiveCollegeId);
+
+  if (delErr) {
+    return { success: false, error: delErr.message };
+  }
+
+  await logAuditAction(
+    supabase,
+    { adminId: session.admin?.id, email: session.user?.email },
+    'DELETE_SEMESTER',
+    'semesters',
+    id,
+    `Deleted ${targetSem.name} from institution ${effectiveCollegeId}`
+  );
+
+  revalidateTag(ACADEMIC_CACHE_TAG);
+  revalidateTag(`academic_masters_${effectiveCollegeId}`);
+  revalidatePath('/admin/dashboard');
+  revalidatePath('/');
+
+  return { success: true };
+}
+
 // -------------------------------------------------------------
 // 5. FACULTIES CRUD
 // -------------------------------------------------------------
@@ -1099,6 +1314,31 @@ export async function deleteFacultyAction(id: string, targetCollegeId?: string) 
     };
   }
 
+  const { count: formsCount } = await supabase
+    .from('feedback_forms')
+    .select('id', { count: 'exact', head: true })
+    .eq('faculty_id', id)
+    .eq('college_id', effectiveCollegeId);
+
+  if (formsCount && formsCount > 0) {
+    return {
+      success: false,
+      error: `Cannot delete faculty member "${targetFaculty.name}": ${formsCount} feedback form(s) are linked to them.`,
+    };
+  }
+
+  const { count: formItemsCount } = await supabase
+    .from('feedback_form_items')
+    .select('id', { count: 'exact', head: true })
+    .eq('faculty_id', id);
+
+  if (formItemsCount && formItemsCount > 0) {
+    return {
+      success: false,
+      error: `Cannot delete faculty member "${targetFaculty.name}": ${formItemsCount} feedback form item(s) are linked to them.`,
+    };
+  }
+
   const { error } = await supabase
     .from('faculties')
     .delete()
@@ -1115,6 +1355,11 @@ export async function deleteFacultyAction(id: string, targetCollegeId?: string) 
     id,
     `Deleted faculty member ${targetFaculty.name} from institution ${effectiveCollegeId}`
   );
+
+  revalidateTag(ACADEMIC_CACHE_TAG);
+  revalidateTag(`academic_masters_${effectiveCollegeId}`);
+  revalidatePath('/admin/dashboard');
+  revalidatePath('/');
 
   return { success: true };
 }
@@ -1158,12 +1403,42 @@ export async function createSubjectAction(data: {
     return { success: false, error: `Subject code "${subCode}" already exists in this institution.` };
   }
 
+  let branchId: string | null = null;
+  if (data.branch_id && data.branch_id.trim()) {
+    const { data: validBranch } = await supabase
+      .from('branches')
+      .select('id')
+      .eq('id', data.branch_id.trim())
+      .eq('college_id', authorizedCollegeId)
+      .maybeSingle();
+
+    if (!validBranch) {
+      return { success: false, error: 'The selected branch does not exist or does not belong to your institution.' };
+    }
+    branchId = validBranch.id;
+  }
+
+  let semesterId: string | null = null;
+  if (data.semester_id && data.semester_id.trim()) {
+    const { data: validSem } = await supabase
+      .from('semesters')
+      .select('id')
+      .eq('id', data.semester_id.trim())
+      .eq('college_id', authorizedCollegeId)
+      .maybeSingle();
+
+    if (!validSem) {
+      return { success: false, error: 'The selected semester does not exist or does not belong to your institution.' };
+    }
+    semesterId = validSem.id;
+  }
+
   const payload: Record<string, any> = {
     college_id: authorizedCollegeId,
     name: data.name.trim(),
     code: subCode,
-    semester_id: data.semester_id || null,
-    branch_id: data.branch_id || null,
+    semester_id: semesterId,
+    branch_id: branchId,
     is_active: data.is_active,
   };
 
@@ -1184,6 +1459,8 @@ export async function createSubjectAction(data: {
     `Created subject ${newSubject.name} (${newSubject.code}) in institution ${authorizedCollegeId}`
   );
 
+  revalidateTag(ACADEMIC_CACHE_TAG);
+  revalidateTag(`academic_masters_${authorizedCollegeId}`);
   revalidatePath('/admin/dashboard');
   revalidatePath('/');
   return { success: true, subject: newSubject };
@@ -1248,11 +1525,41 @@ export async function updateSubjectAction(
     return { success: false, error: `Subject code "${subCode}" already exists in this institution.` };
   }
 
+  let branchId: string | null = null;
+  if (data.branch_id && data.branch_id.trim()) {
+    const { data: validBranch } = await supabase
+      .from('branches')
+      .select('id')
+      .eq('id', data.branch_id.trim())
+      .eq('college_id', effectiveCollegeId)
+      .maybeSingle();
+
+    if (!validBranch) {
+      return { success: false, error: 'The selected branch does not exist or does not belong to your institution.' };
+    }
+    branchId = validBranch.id;
+  }
+
+  let semesterId: string | null = null;
+  if (data.semester_id && data.semester_id.trim()) {
+    const { data: validSem } = await supabase
+      .from('semesters')
+      .select('id')
+      .eq('id', data.semester_id.trim())
+      .eq('college_id', effectiveCollegeId)
+      .maybeSingle();
+
+    if (!validSem) {
+      return { success: false, error: 'The selected semester does not exist or does not belong to your institution.' };
+    }
+    semesterId = validSem.id;
+  }
+
   const payload: Record<string, any> = {
     name: data.name.trim(),
     code: subCode,
-    semester_id: data.semester_id || null,
-    branch_id: data.branch_id || null,
+    semester_id: semesterId,
+    branch_id: branchId,
     is_active: data.is_active,
     updated_at: new Date().toISOString(),
   };
@@ -1274,6 +1581,8 @@ export async function updateSubjectAction(
     `Updated subject ${data.name} in institution ${effectiveCollegeId}`
   );
 
+  revalidateTag(ACADEMIC_CACHE_TAG);
+  revalidateTag(`academic_masters_${effectiveCollegeId}`);
   revalidatePath('/admin/dashboard');
   revalidatePath('/');
   return { success: true };
@@ -1314,6 +1623,7 @@ export async function deleteSubjectAction(id: string, targetCollegeId?: string) 
 
   const effectiveCollegeId = targetSub.college_id;
 
+  // 1. Dependency check: faculty_subject_assignments
   const { count: assignCount } = await supabase
     .from('faculty_subject_assignments')
     .select('id', { count: 'exact', head: true })
@@ -1324,6 +1634,33 @@ export async function deleteSubjectAction(id: string, targetCollegeId?: string) 
     return {
       success: false,
       error: `Cannot delete subject "${targetSub.name}": ${assignCount} assignment(s) are linked to it.`,
+    };
+  }
+
+  // 2. Dependency check: feedback_forms
+  const { count: formsCount } = await supabase
+    .from('feedback_forms')
+    .select('id', { count: 'exact', head: true })
+    .eq('subject_id', id)
+    .eq('college_id', effectiveCollegeId);
+
+  if (formsCount && formsCount > 0) {
+    return {
+      success: false,
+      error: `Cannot delete subject "${targetSub.name}": ${formsCount} feedback form(s) are linked to it.`,
+    };
+  }
+
+  // 3. Dependency check: feedback_form_items
+  const { count: formItemsCount } = await supabase
+    .from('feedback_form_items')
+    .select('id', { count: 'exact', head: true })
+    .eq('subject_id', id);
+
+  if (formItemsCount && formItemsCount > 0) {
+    return {
+      success: false,
+      error: `Cannot delete subject "${targetSub.name}": ${formItemsCount} feedback form item(s) are linked to it.`,
     };
   }
 
@@ -1343,6 +1680,11 @@ export async function deleteSubjectAction(id: string, targetCollegeId?: string) 
     id,
     `Deleted subject ${targetSub.name} from institution ${effectiveCollegeId}`
   );
+
+  revalidateTag(ACADEMIC_CACHE_TAG);
+  revalidateTag(`academic_masters_${effectiveCollegeId}`);
+  revalidatePath('/admin/dashboard');
+  revalidatePath('/');
 
   return { success: true };
 }
@@ -1374,6 +1716,74 @@ export async function createAssignmentAction(data: {
 
   const supabase = await getAdminDb();
 
+  // Validate that faculty belongs to this authorized college
+  const { data: validFac } = await supabase
+    .from('faculties')
+    .select('id')
+    .eq('id', data.faculty_id)
+    .eq('college_id', authorizedCollegeId)
+    .maybeSingle();
+
+  if (!validFac) {
+    return { success: false, error: 'The selected faculty member does not exist or does not belong to your institution.' };
+  }
+
+  // Validate that course subject belongs to this authorized college
+  const { data: validSub } = await supabase
+    .from('subjects')
+    .select('id')
+    .eq('id', data.subject_id)
+    .eq('college_id', authorizedCollegeId)
+    .maybeSingle();
+
+  if (!validSub) {
+    return { success: false, error: 'The selected course subject does not exist or does not belong to your institution.' };
+  }
+
+  // Validate that academic year belongs to this authorized college
+  const { data: validYear } = await supabase
+    .from('academic_years')
+    .select('id')
+    .eq('id', data.academic_year_id)
+    .eq('college_id', authorizedCollegeId)
+    .maybeSingle();
+
+  if (!validYear) {
+    return { success: false, error: 'The selected academic session does not exist or does not belong to your institution.' };
+  }
+
+  // Validate branch belongs to this authorized college if provided
+  let branchId: string | null = null;
+  if (data.branch_id && data.branch_id.trim()) {
+    const { data: validBranch } = await supabase
+      .from('branches')
+      .select('id')
+      .eq('id', data.branch_id.trim())
+      .eq('college_id', authorizedCollegeId)
+      .maybeSingle();
+
+    if (!validBranch) {
+      return { success: false, error: 'The selected branch does not belong to your institution.' };
+    }
+    branchId = validBranch.id;
+  }
+
+  // Validate semester belongs to this authorized college if provided
+  let semesterId: string | null = null;
+  if (data.semester_id && data.semester_id.trim()) {
+    const { data: validSem } = await supabase
+      .from('semesters')
+      .select('id')
+      .eq('id', data.semester_id.trim())
+      .eq('college_id', authorizedCollegeId)
+      .maybeSingle();
+
+    if (!validSem) {
+      return { success: false, error: 'The selected semester does not belong to your institution.' };
+    }
+    semesterId = validSem.id;
+  }
+
   // Check unique assignment within college (uq_faculty_assignments_f_s_y)
   const { data: existingAssign } = await supabase
     .from('faculty_subject_assignments')
@@ -1393,8 +1803,8 @@ export async function createAssignmentAction(data: {
     faculty_id: data.faculty_id,
     subject_id: data.subject_id,
     academic_year_id: data.academic_year_id,
-    branch_id: data.branch_id || null,
-    semester_id: data.semester_id || null,
+    branch_id: branchId,
+    semester_id: semesterId,
     is_active: data.is_active,
   };
 
@@ -1415,6 +1825,8 @@ export async function createAssignmentAction(data: {
     `Assigned faculty to subject in institution ${authorizedCollegeId}`
   );
 
+  revalidateTag(ACADEMIC_CACHE_TAG);
+  revalidateTag(`academic_masters_${authorizedCollegeId}`);
   revalidatePath('/admin/dashboard');
   revalidatePath('/');
   return { success: true, assignment: newAssign };
@@ -1472,6 +1884,8 @@ export async function deleteAssignmentAction(id: string, targetCollegeId?: strin
     `Removed faculty-subject assignment from institution ${effectiveCollegeId}`
   );
 
+  revalidateTag(ACADEMIC_CACHE_TAG);
+  revalidateTag(`academic_masters_${effectiveCollegeId}`);
   revalidatePath('/admin/dashboard');
   revalidatePath('/');
   return { success: true };
@@ -1594,11 +2008,19 @@ export async function getPaginatedFacultiesAction(params: {
     return { success: false, error: 'Unauthorized.', data: [], total: 0, page: 1, pageSize: 20, totalPages: 0 };
   }
 
-  let authorizedCollegeId: string | null = null;
+  let authorizedCollegeId: string;
   try {
     authorizedCollegeId = await resolveAuthorizedCollegeId(session, params.collegeId);
-  } catch {
-    // If not resolvable, keep null
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err.message || 'Unable to determine the active institution. Please select an institution and try again.',
+      data: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      totalPages: 0,
+    };
   }
 
   const page = Math.max(1, params.page || 1);
@@ -1609,11 +2031,8 @@ export async function getPaginatedFacultiesAction(params: {
   const supabase = await getAdminDb();
   let query = supabase
     .from('faculties')
-    .select('id, name, department, designation, employee_id, is_active, created_at', { count: 'exact' });
-
-  if (authorizedCollegeId) {
-    query = query.eq('college_id', authorizedCollegeId);
-  }
+    .select('id, name, department, designation, employee_id, is_active, created_at', { count: 'exact' })
+    .eq('college_id', authorizedCollegeId);
 
   if (params.search && params.search.trim()) {
     const q = params.search.trim();
@@ -1662,11 +2081,19 @@ export async function getPaginatedSubjectsAction(params: {
     return { success: false, error: 'Unauthorized.', data: [], total: 0, page: 1, pageSize: 20, totalPages: 0 };
   }
 
-  let authorizedCollegeId: string | null = null;
+  let authorizedCollegeId: string;
   try {
     authorizedCollegeId = await resolveAuthorizedCollegeId(session, params.collegeId);
-  } catch {
-    // If not resolvable, keep null
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err.message || 'Unable to determine the active institution. Please select an institution and try again.',
+      data: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      totalPages: 0,
+    };
   }
 
   const page = Math.max(1, params.page || 1);
@@ -1677,11 +2104,8 @@ export async function getPaginatedSubjectsAction(params: {
   const supabase = await getAdminDb();
   let query = supabase
     .from('subjects')
-    .select('id, name, code, branch_id, semester_id, is_active, created_at', { count: 'exact' });
-
-  if (authorizedCollegeId) {
-    query = query.eq('college_id', authorizedCollegeId);
-  }
+    .select('id, name, code, branch_id, semester_id, is_active, created_at', { count: 'exact' })
+    .eq('college_id', authorizedCollegeId);
 
   if (params.search && params.search.trim()) {
     const q = params.search.trim();
@@ -1735,11 +2159,19 @@ export async function getPaginatedAssignmentsAction(params: {
     return { success: false, error: 'Unauthorized.', data: [], total: 0, page: 1, pageSize: 20, totalPages: 0 };
   }
 
-  let authorizedCollegeId: string | null = null;
+  let authorizedCollegeId: string;
   try {
     authorizedCollegeId = await resolveAuthorizedCollegeId(session, params.collegeId);
-  } catch {
-    // If not resolvable, keep null
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err.message || 'Unable to determine the active institution. Please select an institution and try again.',
+      data: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      totalPages: 0,
+    };
   }
 
   const page = Math.max(1, params.page || 1);
@@ -1767,11 +2199,8 @@ export async function getPaginatedAssignmentsAction(params: {
       semester:semesters(id, name)
     `,
       { count: 'exact' }
-    );
-
-  if (authorizedCollegeId) {
-    query = query.eq('college_id', authorizedCollegeId);
-  }
+    )
+    .eq('college_id', authorizedCollegeId);
 
   if (params.academicYearId && params.academicYearId !== 'ALL') {
     query = query.eq('academic_year_id', params.academicYearId);
@@ -1892,6 +2321,8 @@ export async function deleteAcademicYearAction(id: string, targetCollegeId?: str
   } catch {
     // Ignore in unsupported environments
   }
+  revalidatePath('/admin/dashboard');
+  revalidatePath('/');
 
   return { success: true };
 }

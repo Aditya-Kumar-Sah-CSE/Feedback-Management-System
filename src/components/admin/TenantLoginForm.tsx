@@ -134,9 +134,9 @@ export function TenantLoginForm({
         return;
       }
 
-      // User is verified and authorized
-      router.push(targetDestination);
-      router.refresh();
+      // User is verified and authorized - use window.location.href to guarantee fresh session cookies
+      window.location.href = targetDestination;
+      return;
     } catch (err: unknown) {
       console.error('Login error:', err);
       setErrorMsg('An unexpected error occurred during login. Please try again.');

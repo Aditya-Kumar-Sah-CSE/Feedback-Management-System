@@ -586,6 +586,7 @@ export function AdminDashboardTabs({
 
         {activeTab === 'academic' && (
           <AcademicManagementTab
+            key={activeCollegeId || 'no-tenant'}
             academicYears={academicYears}
             branches={branches}
             semesters={semesters}

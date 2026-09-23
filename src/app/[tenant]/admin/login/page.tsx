@@ -1,6 +1,8 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 import { resolveTenantOrNotFound } from '@/lib/tenant/resolver';
+import { getAdminSession } from '@/lib/auth/admin-auth';
 import { TenantLoginForm } from '@/components/admin/TenantLoginForm';
 import { School, Loader2 } from 'lucide-react';
 
@@ -26,6 +28,11 @@ export async function generateMetadata({ params }: TenantAdminLoginPageProps): P
 export default async function TenantAdminLoginPage({ params }: TenantAdminLoginPageProps) {
   const { tenant: rawSlug } = await params;
   const tenant = await resolveTenantOrNotFound(rawSlug);
+
+  const session = await getAdminSession();
+  if (session.isAuthenticated && session.isActive) {
+    redirect('/admin/dashboard');
+  }
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col justify-center py-8 sm:py-12 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">

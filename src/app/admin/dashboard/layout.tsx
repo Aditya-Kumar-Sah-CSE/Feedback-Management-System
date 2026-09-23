@@ -72,12 +72,14 @@ export default async function AdminDashboardLayout({
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-            {/* Multi-Tenant Switcher */}
-            <TenantSwitcher
-              colleges={session.colleges}
-              activeCollegeId={session.activeCollegeId}
-              isPlatformSuperAdmin={session.isPlatformSuperAdmin}
-            />
+            {/* Multi-Tenant Switcher — Super Admin only */}
+            {isSuper && (
+              <TenantSwitcher
+                colleges={session.colleges}
+                activeCollegeId={session.activeCollegeId}
+                isPlatformSuperAdmin={session.isPlatformSuperAdmin}
+              />
+            )}
             {/* User Profile Badge */}
             <div className="hidden sm:flex flex-col items-end text-right">
               <div className="flex items-center gap-1.5">

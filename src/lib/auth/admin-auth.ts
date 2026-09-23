@@ -153,12 +153,9 @@ export async function getAdminSession(
       activeCollege = authorizedColleges[0];
     }
   } else {
-    // College Admin may ONLY select an authorized college with status = ACTIVE
-    if (requestedCollegeId) {
-      activeCollege = authorizedColleges.find((c) => c.collegeId === requestedCollegeId) || null;
-    }
-    // If cookie is missing or points to unauthorized college, default to first authorized membership
-    if (!activeCollege && authorizedColleges.length > 0) {
+    // College Admin: LOCKED to their authorized membership. Cookie is IGNORED.
+    // This prevents forged/stale cookies from pointing a College Admin at another institution.
+    if (authorizedColleges.length > 0) {
       activeCollege = authorizedColleges[0];
     }
   }
@@ -350,7 +347,7 @@ export async function resolveAuthorizedCollegeId(
   }
 
   if (!authorizedCollegeId) {
-    throw new Error('Unauthorized: Missing tenant context. Unable to establish target institution.');
+    throw new Error('Unable to determine the active institution. Please select an institution and try again.');
   }
 
   return authorizedCollegeId;

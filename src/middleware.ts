@@ -83,7 +83,13 @@ export async function middleware(request: NextRequest) {
     }
 
     // If already authenticated and accessing login/signup, redirect to destination or dashboard
-    if ((pathname === '/admin/login' || pathname === '/admin/signup') && user) {
+    const isLoginOrSignup =
+      pathname === '/admin/login' ||
+      pathname === '/admin/signup' ||
+      pathname.endsWith('/admin/login') ||
+      pathname.endsWith('/admin/signup');
+
+    if (isLoginOrSignup && user) {
       const redirectParam = request.nextUrl.searchParams.get('redirect');
       const dest = redirectParam && redirectParam.startsWith('/admin') ? redirectParam : '/admin/dashboard';
       return NextResponse.redirect(new URL(dest, request.url));

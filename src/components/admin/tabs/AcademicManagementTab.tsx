@@ -7,7 +7,10 @@ import {
   createBranchAction,
   updateBranchAction,
   deleteBranchAction,
+  createSemesterAction,
   updateSemesterAction,
+  deleteSemesterAction,
+  bulkSetupSemestersAction,
   createFacultyAction,
   updateFacultyAction,
   deleteFacultyAction,
@@ -35,6 +38,7 @@ import {
   Edit2,
   X,
   Check,
+  Zap,
 } from 'lucide-react';
 import type {
   AcademicYear,
@@ -274,6 +278,28 @@ export function AcademicManagementTab({
   const [editBranchName, setEditBranchName] = useState('');
   const [editBranchCode, setEditBranchCode] = useState('');
   const [deletingBranch, setDeletingBranch] = useState<Branch | null>(null);
+
+  // 5. Semester form & deletion state
+  const [semNumber, setSemNumber] = useState<number>(1);
+  const [semYear, setSemYear] = useState<number>(1);
+  const [semName, setSemName] = useState<string>('Semester 1');
+  const [deletingSemester, setDeletingSemester] = useState<Semester | null>(null);
+
+  // Sync state when props or activeCollegeId changes
+  useEffect(() => {
+    setBranchList(branches);
+    setYearList(academicYears);
+    setSemesterList(semesters);
+    setFacultyList(initialFaculties);
+    setSubjectList(initialSubjects);
+    setAssignmentList(initialAssignments);
+    setFacultyTotal(initialFacultyTotal ?? initialFaculties.length);
+    setSubjectTotal(initialSubjectTotal ?? initialSubjects.length);
+    setAssignTotal(initialAssignmentTotal ?? initialAssignments.length);
+    setFacultyPage(1);
+    setSubjectPage(1);
+    setAssignPage(1);
+  }, [branches, academicYears, semesters, initialFaculties, initialSubjects, initialAssignments, initialFacultyTotal, initialSubjectTotal, initialAssignmentTotal, activeCollegeId]);
 
   // -------------------------------------------------------------
   // HANDLERS (With immediate local state updates)
@@ -619,6 +645,67 @@ export function AcademicManagementTab({
           prev.map((item) => (item.id === s.id ? { ...item, is_active: s.is_active } : item))
         );
         setMessage({ type: 'error', text: res.error || 'Failed to update semester.' });
+      }
+    });
+  };
+
+  const handleCreateSemester = (e: React.FormEvent) => {
+    e.preventDefault();
+    setMessage(null);
+    startTransition(async () => {
+      const res = await createSemesterAction({
+        name: semName.trim(),
+        year_number: semYear,
+        semester_number: semNumber,
+        is_active: true,
+        collegeId: activeCollegeId,
+      });
+      if (res.success && res.semester) {
+        setMessage({ type: 'success', text: `Semester ${res.semester.name} added successfully.` });
+        setSemesterList((prev) =>
+          [...prev, res.semester as Semester].sort((a, b) => a.semester_number - b.semester_number)
+        );
+        const nextNum = Math.min(8, semNumber + 1);
+        setSemNumber(nextNum);
+        setSemYear(Math.ceil(nextNum / 2));
+        setSemName(`Semester ${nextNum}`);
+      } else {
+        setMessage({ type: 'error', text: res.error || 'Failed to add semester.' });
+      }
+    });
+  };
+
+  const handleBulkSetupSemesters = (total: 6 | 8) => {
+    setMessage(null);
+    startTransition(async () => {
+      const res = await bulkSetupSemestersAction({ totalSemesters: total, collegeId: activeCollegeId });
+      if (res.success && res.semesters) {
+        setMessage({
+          type: 'success',
+          text: `Configured ${total}-semester curriculum structure successfully (${res.count} new semester(s) added).`,
+        });
+        setSemesterList(res.semesters as Semester[]);
+      } else {
+        setMessage({ type: 'error', text: res.error || 'Failed to setup semesters.' });
+      }
+    });
+  };
+
+  const handleDeleteSemesterConfirm = () => {
+    if (!deletingSemester) return;
+    setMessage(null);
+    startTransition(async () => {
+      const res = await deleteSemesterAction(deletingSemester.id, activeCollegeId);
+      if (res.success) {
+        setMessage({
+          type: 'success',
+          text: `Semester "${deletingSemester.name}" deleted successfully.`,
+        });
+        setSemesterList((prev) => prev.filter((s) => s.id !== deletingSemester.id));
+        setDeletingSemester(null);
+      } else {
+        setMessage({ type: 'error', text: res.error || 'Failed to delete semester.' });
+        setDeletingSemester(null);
       }
     });
   };
@@ -1643,50 +1730,287 @@ export function AcademicManagementTab({
 
       {/* 6. SEMESTERS SUBTAB */}
       {activeSubTab === 'semesters' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden w-full min-w-0">
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-            <h4 className="text-sm font-bold text-slate-900">Configured Semesters ({semesterList.length})</h4>
-            <span className="text-xs text-slate-400">8 Semester Curriculum Structure</span>
-          </div>
-          <div className="overflow-x-auto min-w-0">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-100 uppercase tracking-wider">
-              <tr>
-                <th className="px-5 py-3">Semester</th>
-                <th className="px-5 py-3">Year Level</th>
-                <th className="px-5 py-3">Semester #</th>
-                <th className="px-5 py-3">Status</th>
-                <th className="px-5 py-3 text-right">Toggle</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {semesterList.map((s) => (
-                <tr key={s.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-5 py-3 font-bold text-slate-800">{s.name}</td>
-                  <td className="px-5 py-3 text-slate-600">Year {s.year_number}</td>
-                  <td className="px-5 py-3 text-slate-600">Semester {s.semester_number}</td>
-                  <td className="px-5 py-3">
-                    <span
-                      className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
-                        s.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'
-                      }`}
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left Column: Quick Setup & Manual Add */}
+            <div className="space-y-6 lg:col-span-1">
+              {/* Quick Setup Card */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                    <Zap className="w-4 h-4 fill-amber-500 text-amber-500" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900">Quick Curriculum Setup</h4>
+                    <p className="text-[11px] text-slate-500">1-click standard semester generator</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleBulkSetupSemesters(8)}
+                    disabled={isPending}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center justify-between transition-all disabled:opacity-50 shadow-xs group cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-slate-800 group-hover:bg-slate-700 flex items-center justify-center text-[10px] font-bold text-amber-400">8</span>
+                      <span>Setup 8 Semesters</span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-normal">B.Tech / 4-Yr</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleBulkSetupSemesters(6)}
+                    disabled={isPending}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold flex items-center justify-between transition-all disabled:opacity-50 group border border-slate-200 cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-slate-200 group-hover:bg-slate-300 flex items-center justify-center text-[10px] font-bold text-slate-700">6</span>
+                      <span>Setup 6 Semesters</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-normal">Diploma / 3-Yr</span>
+                  </button>
+                </div>
+
+                <p className="text-[11px] text-slate-400 leading-relaxed pt-1">
+                  Generates missing standard semesters along with academic year levels. Existing semesters are preserved.
+                </p>
+              </div>
+
+              {/* Manual Add Semester Card */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                <h4 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+                  <Plus className="w-4 h-4 text-bce-cobalt" />
+                  <span>Add Single Semester</span>
+                </h4>
+                <form onSubmit={handleCreateSemester} className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Semester Number
+                    </label>
+                    <select
+                      value={semNumber}
+                      onChange={(e) => {
+                        const num = Number(e.target.value);
+                        setSemNumber(num);
+                        setSemYear(Math.ceil(num / 2));
+                        setSemName(`Semester ${num}`);
+                      }}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-bce-cobalt/20"
                     >
-                      {s.is_active ? 'ACTIVE' : 'INACTIVE'}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3 text-right">
+                      {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+                        <option key={n} value={n}>
+                          Semester {n} (Year {Math.ceil(n / 2)})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Year Level
+                      </label>
+                      <select
+                        value={semYear}
+                        onChange={(e) => setSemYear(Number(e.target.value))}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-bce-cobalt/20"
+                      >
+                        {[1, 2, 3, 4].map((y) => (
+                          <option key={y} value={y}>
+                            Year {y}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Display Name
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={semName}
+                        onChange={(e) => setSemName(e.target.value)}
+                        placeholder="e.g. Semester 1"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-bce-cobalt/20"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isPending || !semName.trim()}
+                    className="w-full mt-2 bg-bce-cobalt hover:bg-bce-navy text-white text-xs font-bold py-2.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                    <span>Add Semester</span>
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            {/* Right Column: Semesters Table */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden lg:col-span-2 min-w-0">
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900">Configured Semesters ({semesterList.length})</h4>
+                  <p className="text-[11px] text-slate-500">Active semesters available for subjects & feedback forms</p>
+                </div>
+                {semesterList.length > 0 && (
+                  <span className="text-[11px] font-medium text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">
+                    {semesterList.filter((s) => s.is_active).length} Active
+                  </span>
+                )}
+              </div>
+
+              {semesterList.length === 0 ? (
+                <div className="p-8 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 mx-auto flex items-center justify-center">
+                    <Zap className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h5 className="text-sm font-bold text-slate-800">No Semesters Configured</h5>
+                    <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                      Use the quick setup buttons on the left to instantly generate a 6 or 8 semester curriculum for this institution.
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-center gap-3 pt-2">
                     <button
-                      onClick={() => handleToggleSemester(s)}
-                      className="text-bce-cobalt hover:underline text-xs font-semibold cursor-pointer"
+                      type="button"
+                      onClick={() => handleBulkSetupSemesters(8)}
+                      disabled={isPending}
+                      className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs cursor-pointer"
                     >
-                      {s.is_active ? 'Deactivate' : 'Activate'}
+                      ⚡ Setup 8 Semesters
                     </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <button
+                      type="button"
+                      onClick={() => handleBulkSetupSemesters(6)}
+                      disabled={isPending}
+                      className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold border border-slate-200 cursor-pointer"
+                    >
+                      ⚡ Setup 6 Semesters
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="overflow-x-auto min-w-0">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-100 uppercase tracking-wider">
+                      <tr>
+                        <th className="px-5 py-3">Semester</th>
+                        <th className="px-5 py-3">Year Level</th>
+                        <th className="px-5 py-3">Semester #</th>
+                        <th className="px-5 py-3">Status</th>
+                        <th className="px-5 py-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {semesterList.map((s) => (
+                        <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-5 py-3 font-bold text-slate-800">{s.name}</td>
+                          <td className="px-5 py-3 text-slate-600">Year {s.year_number}</td>
+                          <td className="px-5 py-3 text-slate-600">Semester {s.semester_number}</td>
+                          <td className="px-5 py-3">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
+                                s.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'
+                              }`}
+                            >
+                              {s.is_active ? 'ACTIVE' : 'INACTIVE'}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3 text-right">
+                            <div className="inline-flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleSemester(s)}
+                                className={`px-2 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                                  s.is_active
+                                    ? 'text-amber-700 bg-amber-50 hover:bg-amber-100'
+                                    : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+                                }`}
+                              >
+                                {s.is_active ? 'Deactivate' : 'Activate'}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setDeletingSemester(s)}
+                                className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                title="Delete Semester"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
+
+          {/* Delete Semester Confirmation Modal */}
+          {deletingSemester && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+              <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150">
+                <div className="p-4 bg-rose-50 border-b border-rose-100 flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-rose-900 flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 text-rose-600" />
+                    <span>Confirm Semester Deletion</span>
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setDeletingSemester(null)}
+                    className="p-1 rounded-lg text-rose-400 hover:text-rose-600 hover:bg-rose-100 transition-colors cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="p-5 space-y-3 text-xs text-slate-600">
+                  <p className="text-slate-800 font-medium">
+                    Are you sure you want to permanently delete:
+                  </p>
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 flex items-center justify-between">
+                    <span>{deletingSemester.name}</span>
+                    <span className="font-mono text-xs px-2 py-0.5 bg-slate-200 text-slate-700 rounded-md">
+                      Year {deletingSemester.year_number} • Sem {deletingSemester.semester_number}
+                    </span>
+                  </div>
+                  <p className="text-rose-600 text-[11px] leading-relaxed">
+                    ⚠️ Deletion is permanently blocked if any subjects, teaching assignments, or feedback forms are currently linked to this semester.
+                  </p>
+                </div>
+
+                <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDeletingSemester(null)}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeleteSemesterConfirm}
+                    disabled={isPending}
+                    className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                    <span>Delete Semester</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

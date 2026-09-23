@@ -22,9 +22,9 @@ export function TenantSwitcher({
   const [isOpen, setIsOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  // Show only if Platform Super Admin OR user has multiple active memberships
-  if (!isPlatformSuperAdmin && colleges.length <= 1) {
-    const singleCollege = colleges[0];
+  // College Admins are LOCKED to their institution — never show switcher dropdown
+  if (!isPlatformSuperAdmin) {
+    const singleCollege = colleges.find((c) => c.collegeId === activeCollegeId) || colleges[0];
     if (!singleCollege) return null;
     return (
       <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/60 text-slate-200 text-xs">

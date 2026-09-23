@@ -36,33 +36,20 @@ export default async function AdminDashboardPage() {
   const adminDb = createAdminClient() || supabase;
 
   const activeCollegeId = session.activeCollegeId;
+  const targetCollegeId = activeCollegeId || '00000000-0000-0000-0000-000000000000';
 
-  // Build queries scoped to active college
-  let yearQuery = supabase.from('academic_years').select('id, name, is_active, created_at').order('name', { ascending: false });
-  let branchQuery = supabase.from('branches').select('id, name, code, is_active, created_at').order('name', { ascending: true });
-  let semesterQuery = supabase.from('semesters').select('id, name, year_number, semester_number, is_active, created_at').order('semester_number', { ascending: true });
-  let facultyQuery = supabase.from('faculties').select('id, name, employee_id, department, designation, is_active, created_at', { count: 'exact' }).order('name', { ascending: true }).range(0, 19);
-  let subjectQuery = supabase.from('subjects').select('id, name, code, semester_id, branch_id, is_active, created_at', { count: 'exact' }).order('code', { ascending: true }).range(0, 19);
-  let assignQuery = supabase.from('faculty_subject_assignments').select('id, faculty_id, subject_id, academic_year_id, branch_id, semester_id, created_at', { count: 'exact' }).order('created_at', { ascending: false }).range(0, 19);
-  let formQuery = supabase.from('feedback_forms').select('*', { count: 'exact' }).order('created_at', { ascending: false }).range(0, 49);
-  let auditQuery = adminDb.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(20);
-  let activeFacultyCountQuery = supabase.from('faculties').select('id', { count: 'exact', head: true }).eq('is_active', true);
-  let activeSubjectCountQuery = supabase.from('subjects').select('id', { count: 'exact', head: true }).eq('is_active', true);
-  let pubFormCountQuery = supabase.from('feedback_forms').select('id', { count: 'exact', head: true }).eq('status', 'PUBLISHED');
-
-  if (activeCollegeId) {
-    yearQuery = yearQuery.eq('college_id', activeCollegeId);
-    branchQuery = branchQuery.eq('college_id', activeCollegeId);
-    semesterQuery = semesterQuery.eq('college_id', activeCollegeId);
-    facultyQuery = facultyQuery.eq('college_id', activeCollegeId);
-    subjectQuery = subjectQuery.eq('college_id', activeCollegeId);
-    assignQuery = assignQuery.eq('college_id', activeCollegeId);
-    formQuery = formQuery.eq('college_id', activeCollegeId);
-    activeFacultyCountQuery = activeFacultyCountQuery.eq('college_id', activeCollegeId);
-    activeSubjectCountQuery = activeSubjectCountQuery.eq('college_id', activeCollegeId);
-    pubFormCountQuery = pubFormCountQuery.eq('college_id', activeCollegeId);
-    auditQuery = auditQuery.eq('college_id', activeCollegeId);
-  }
+  // Build queries strictly scoped to active college (fail-closed)
+  const yearQuery = supabase.from('academic_years').select('id, name, is_active, created_at').eq('college_id', targetCollegeId).order('name', { ascending: false });
+  const branchQuery = supabase.from('branches').select('id, name, code, is_active, created_at').eq('college_id', targetCollegeId).order('name', { ascending: true });
+  const semesterQuery = supabase.from('semesters').select('id, name, year_number, semester_number, is_active, created_at').eq('college_id', targetCollegeId).order('semester_number', { ascending: true });
+  const facultyQuery = supabase.from('faculties').select('id, name, employee_id, department, designation, is_active, created_at', { count: 'exact' }).eq('college_id', targetCollegeId).order('name', { ascending: true }).range(0, 19);
+  const subjectQuery = supabase.from('subjects').select('id, name, code, semester_id, branch_id, is_active, created_at', { count: 'exact' }).eq('college_id', targetCollegeId).order('code', { ascending: true }).range(0, 19);
+  const assignQuery = supabase.from('faculty_subject_assignments').select('id, faculty_id, subject_id, academic_year_id, branch_id, semester_id, created_at', { count: 'exact' }).eq('college_id', targetCollegeId).order('created_at', { ascending: false }).range(0, 19);
+  const formQuery = supabase.from('feedback_forms').select('*', { count: 'exact' }).eq('college_id', targetCollegeId).order('created_at', { ascending: false }).range(0, 49);
+  const auditQuery = adminDb.from('audit_logs').select('*').eq('college_id', targetCollegeId).order('created_at', { ascending: false }).limit(20);
+  const activeFacultyCountQuery = supabase.from('faculties').select('id', { count: 'exact', head: true }).eq('college_id', targetCollegeId).eq('is_active', true);
+  const activeSubjectCountQuery = supabase.from('subjects').select('id', { count: 'exact', head: true }).eq('college_id', targetCollegeId).eq('is_active', true);
+  const pubFormCountQuery = supabase.from('feedback_forms').select('id', { count: 'exact', head: true }).eq('college_id', targetCollegeId).eq('status', 'PUBLISHED');
 
   // Parallel lean data fetching for the admin portal with exact counts & range limits
   const [
@@ -86,11 +73,11 @@ export default async function AdminDashboardPage() {
     facultyQuery,
     subjectQuery,
     assignQuery,
-    adminDb.from('college_admin_requests').select('*, colleges(id, name, code, slug)').order('created_at', { ascending: false }),
-    (activeCollegeId
-      ? adminDb.from('college_memberships').select('id, user_id, role, status, created_at, college_id, colleges(id, name, code, slug)').eq('college_id', activeCollegeId).order('created_at', { ascending: false })
-      : adminDb.from('college_memberships').select('id, user_id, role, status, created_at, college_id, colleges(id, name, code, slug)').order('created_at', { ascending: false })
+    (session.isPlatformSuperAdmin
+      ? adminDb.from('college_admin_requests').select('*, colleges(id, name, code, slug)').order('created_at', { ascending: false })
+      : adminDb.from('college_admin_requests').select('*, colleges(id, name, code, slug)').eq('college_id', targetCollegeId).order('created_at', { ascending: false })
     ),
+    adminDb.from('college_memberships').select('id, user_id, role, status, created_at, college_id, colleges(id, name, code, slug)').eq('college_id', targetCollegeId).order('created_at', { ascending: false }),
     formQuery,
     auditQuery,
     activeFacultyCountQuery,

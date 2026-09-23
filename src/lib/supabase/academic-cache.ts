@@ -14,46 +14,50 @@ export const LEAN_FACULTY_COLUMNS = 'id, name, department, designation, employee
 export const LEAN_SUBJECT_COLUMNS = 'id, name, code, branch_id, semester_id, is_active';
 
 /**
- * Fetch active academic master records, optionally filtered by college_id.
+ * Fetch active academic master records, strictly scoped by college_id.
  * Cached for 60s, invalidated on mutation.
+ * Never allows un-scoped global fallback.
  */
 export function getCachedAcademicMasters(collegeId?: string) {
-  const cacheKey = collegeId ? `academic_masters_${collegeId}` : 'academic_masters_global';
-  const cacheTag = collegeId ? `academic_masters_${collegeId}` : ACADEMIC_CACHE_TAG;
+  if (!collegeId) {
+    return Promise.resolve({
+      academicYears: [] as AcademicYear[],
+      branches: [] as Branch[],
+      semesters: [] as Semester[],
+    });
+  }
+
+  const cacheKey = `academic_masters_${collegeId}`;
+  const cacheTag = `academic_masters_${collegeId}`;
 
   return unstable_cache(
     async () => {
       const supabase = await createClient();
 
-      let yearQuery = supabase
-        .from('academic_years')
-        .select(LEAN_YEAR_COLUMNS)
-        .eq('is_active', true)
-        .order('name', { ascending: false });
-
-      let branchQuery = supabase
-        .from('branches')
-        .select(LEAN_BRANCH_COLUMNS)
-        .eq('is_active', true)
-        .order('name', { ascending: true });
-
-      let semesterQuery = supabase
-        .from('semesters')
-        .select(LEAN_SEMESTER_COLUMNS)
-        .eq('is_active', true)
-        .order('semester_number', { ascending: true });
-
-      if (collegeId) {
-        yearQuery = yearQuery.eq('college_id', collegeId);
-        branchQuery = branchQuery.eq('college_id', collegeId);
-        semesterQuery = semesterQuery.eq('college_id', collegeId);
-      }
-
       const [
         { data: years },
         { data: branches },
         { data: semesters },
-      ] = await Promise.all([yearQuery, branchQuery, semesterQuery]);
+      ] = await Promise.all([
+        supabase
+          .from('academic_years')
+          .select(LEAN_YEAR_COLUMNS)
+          .eq('college_id', collegeId)
+          .eq('is_active', true)
+          .order('name', { ascending: false }),
+        supabase
+          .from('branches')
+          .select(LEAN_BRANCH_COLUMNS)
+          .eq('college_id', collegeId)
+          .eq('is_active', true)
+          .order('name', { ascending: true }),
+        supabase
+          .from('semesters')
+          .select(LEAN_SEMESTER_COLUMNS)
+          .eq('college_id', collegeId)
+          .eq('is_active', true)
+          .order('semester_number', { ascending: true }),
+      ]);
 
       return {
         academicYears: (years || []) as AcademicYear[],
