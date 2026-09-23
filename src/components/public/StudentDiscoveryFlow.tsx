@@ -38,12 +38,14 @@ interface Props {
   academicYears: AcademicYear[];
   branches: Branch[];
   semesters: Semester[];
+  collegeId?: string;
 }
 
 export function StudentDiscoveryFlow({
   academicYears,
   branches,
   semesters,
+  collegeId,
 }: Props) {
   // Dynamic branches state initialized from server props, refreshed dynamically and live via Realtime
   const [branchList, setBranchList] = useState<Branch[]>(branches);
@@ -59,7 +61,7 @@ export function StudentDiscoveryFlow({
   useEffect(() => {
     let isMounted = true;
     setLoadingBranches(true);
-    getActiveBranchesAction()
+    getActiveBranchesAction(collegeId)
       .then(res => {
         if (isMounted && res.success && res.branches) {
           setBranchList(res.branches);
@@ -75,7 +77,7 @@ export function StudentDiscoveryFlow({
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [collegeId]);
 
   // Supabase Realtime subscription for dynamic branch changes
   useEffect(() => {
@@ -86,7 +88,7 @@ export function StudentDiscoveryFlow({
         'postgres_changes',
         { event: '*', schema: 'public', table: 'branches' },
         () => {
-          getActiveBranchesAction().then(res => {
+          getActiveBranchesAction(collegeId).then(res => {
             if (res.success && res.branches) {
               setBranchList(res.branches);
             }
@@ -98,7 +100,7 @@ export function StudentDiscoveryFlow({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [collegeId]);
 
   // Cascading selections - Branch starts unselected (empty) so user sees "Select Branch / Discipline"
   const [selectedYearId, setSelectedYearId] = useState<string>(
@@ -160,7 +162,7 @@ export function StudentDiscoveryFlow({
     setSemesterFormResult(null);
 
     // Fetch semester form if available
-    getPublicSemesterFeedbackFormAction(selectedYearId, selectedBranchId, selectedSemesterId).then(res => {
+    getPublicSemesterFeedbackFormAction(selectedYearId, selectedBranchId, selectedSemesterId, collegeId).then(res => {
       if (isMounted) {
         if (res.success && res.form && res.status === 'PUBLISHED') {
           setSemesterFormResult(res);
@@ -175,7 +177,8 @@ export function StudentDiscoveryFlow({
         const res = await getPublicFacultiesForSelectionAction(
           selectedYearId,
           selectedBranchId,
-          selectedSemesterId
+          selectedSemesterId,
+          collegeId
         );
 
         if (isMounted) {
@@ -204,7 +207,7 @@ export function StudentDiscoveryFlow({
     return () => {
       isMounted = false;
     };
-  }, [selectedYearId, selectedBranchId, selectedSemesterId]);
+  }, [selectedYearId, selectedBranchId, selectedSemesterId, collegeId]);
 
   // 2. Fetch subjects when Faculty changes
   useEffect(() => {
@@ -226,7 +229,8 @@ export function StudentDiscoveryFlow({
           selectedYearId,
           selectedBranchId,
           selectedSemesterId,
-          selectedFacultyId
+          selectedFacultyId,
+          collegeId
         );
 
         if (isMounted) {
@@ -255,7 +259,7 @@ export function StudentDiscoveryFlow({
     return () => {
       isMounted = false;
     };
-  }, [selectedYearId, selectedBranchId, selectedSemesterId, selectedFacultyId]);
+  }, [selectedYearId, selectedBranchId, selectedSemesterId, selectedFacultyId, collegeId]);
 
   // 3. Fetch Feedback Form when Subject is selected
   useEffect(() => {
@@ -281,7 +285,8 @@ export function StudentDiscoveryFlow({
           selectedBranchId,
           selectedSemesterId,
           selectedFacultyId,
-          selectedSubjectId
+          selectedSubjectId,
+          collegeId
         );
 
         if (isMounted) {
@@ -321,6 +326,7 @@ export function StudentDiscoveryFlow({
     selectedSemesterId,
     selectedFacultyId,
     selectedSubjectId,
+    collegeId,
   ]);
 
   const handleReset = () => {

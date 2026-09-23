@@ -55,15 +55,25 @@ export default async function FeedbackFormsPage({
   const from = (currentPage - 1) * pageSize;
   const to = from + pageSize - 1;
 
+  let yearsQuery = supabase.from('academic_years').select('id, name, is_active').order('name', { ascending: false });
+  let branchesQuery = supabase.from('branches').select('id, name, code, is_active').eq('is_active', true).order('name', { ascending: true });
+  let semestersQuery = supabase.from('semesters').select('id, name, semester_number, is_active').order('semester_number');
+
+  if (session.activeCollegeId) {
+    yearsQuery = yearsQuery.eq('college_id', session.activeCollegeId);
+    branchesQuery = branchesQuery.eq('college_id', session.activeCollegeId);
+    semestersQuery = semestersQuery.eq('college_id', session.activeCollegeId);
+  }
+
   // Fetch academic masters for filters (lean selects)
   const [
     { data: years },
     { data: branches },
     { data: semesters },
   ] = await Promise.all([
-    supabase.from('academic_years').select('id, name, is_active').order('name', { ascending: false }),
-    supabase.from('branches').select('id, name, code, is_active').eq('is_active', true).order('name', { ascending: true }),
-    supabase.from('semesters').select('id, name, semester_number, is_active').order('semester_number'),
+    yearsQuery,
+    branchesQuery,
+    semestersQuery,
   ]);
 
   // Query forms with lean relational projections

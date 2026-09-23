@@ -595,6 +595,7 @@ export function AdminDashboardTabs({
             initialFacultyTotal={counts?.totalFaculties}
             initialSubjectTotal={counts?.totalSubjects}
             initialAssignmentTotal={counts?.totalAssignments}
+            activeCollegeId={activeCollegeId}
           />
         )}
 

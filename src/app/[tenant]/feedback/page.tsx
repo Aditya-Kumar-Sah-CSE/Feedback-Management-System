@@ -87,10 +87,11 @@ export default async function TenantFeedbackPortalPage({ params }: TenantFeedbac
           academicYears={(academicYears as AcademicYear[]) || []}
           branches={(branches as Branch[]) || []}
           semesters={(semesters as Semester[]) || []}
+          collegeId={tenant.collegeId}
         />
 
         {/* All Currently Active Feedback Forms Section for this Tenant */}
-        <AllFeedbackFormsSection initialData={initialActiveForms} />
+        <AllFeedbackFormsSection initialData={initialActiveForms} collegeId={tenant.collegeId} />
       </main>
 
       {/* Footer */}

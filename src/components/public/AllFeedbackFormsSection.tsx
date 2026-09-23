@@ -23,6 +23,7 @@ import { useHydrated, formatDateShort } from '@/lib/hooks/use-hydrated';
 
 interface Props {
   initialData: PublicActiveFormsResult;
+  collegeId?: string;
 }
 
 /**
@@ -58,7 +59,7 @@ function getPageNumbers(current: number, total: number): (number | '...')[] {
   return pages;
 }
 
-export function AllFeedbackFormsSection({ initialData }: Props) {
+export function AllFeedbackFormsSection({ initialData, collegeId }: Props) {
   const [data, setData] = useState<PublicActiveFormsResult>(initialData);
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(initialData.page || 1);
@@ -72,6 +73,7 @@ export function AllFeedbackFormsSection({ initialData }: Props) {
         page: 1,
         pageSize: 12,
         search: val,
+        collegeId,
       });
       if (res.success) {
         setData(res);
@@ -87,6 +89,7 @@ export function AllFeedbackFormsSection({ initialData }: Props) {
         page: newPage,
         pageSize: 12,
         search,
+        collegeId,
       });
       if (res.success) {
         setData(res);

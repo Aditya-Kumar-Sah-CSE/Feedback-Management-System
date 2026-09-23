@@ -41,6 +41,7 @@ export const createFormPayloadSchema = z.object({
   facultyId: z.string().uuid('Faculty ID must be a valid UUID').optional().nullable(),
   subjectId: z.string().uuid('Subject ID must be a valid UUID').optional().nullable(),
   items: z.array(semesterFormItemSchema).optional(),
+  collegeId: z.string().uuid('College ID must be a valid UUID').optional().nullable(),
 }).refine(data => {
   if (data.formType === 'SEMESTER_FEEDBACK') {
     return Array.isArray(data.items) && data.items.length > 0;

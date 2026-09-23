@@ -111,11 +111,12 @@ export default async function TenantHomePage({ params }: TenantPageProps) {
           academicYears={(academicYears as AcademicYear[]) || []}
           branches={(branches as Branch[]) || []}
           semesters={(semesters as Semester[]) || []}
+          collegeId={tenant.collegeId}
         />
 
         {/* All Published Forms Grid for this Tenant */}
         <div className="mt-14">
-          <AllFeedbackFormsSection initialData={initialActiveForms} />
+          <AllFeedbackFormsSection initialData={initialActiveForms} collegeId={tenant.collegeId} />
         </div>
       </main>
 

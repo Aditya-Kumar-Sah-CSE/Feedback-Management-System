@@ -284,3 +284,74 @@ export async function requireAdminSession(options?: {
 
   return session;
 }
+
+/**
+ * Resolves and strictly validates the authorized college ID for an admin mutation.
+ *
+ * Rules:
+ * 1. Admin must be authenticated and active.
+ * 2. If caller is PLATFORM_SUPER_ADMIN:
+ *    - May specify a requested targetCollegeId (e.g. from UI selector or input).
+ *    - If requested targetCollegeId is provided, validates that it exists and is an active college in the platform.
+ *    - If no targetCollegeId is provided, falls back to session.activeCollegeId.
+ *    - If still no college ID, throws an authorization error.
+ * 3. If caller is COLLEGE_ADMIN:
+ *    - MUST use the authenticated user's authorized active college (session.activeCollegeId).
+ *    - If the client passed an input collegeId, verifies it strictly matches the user's active/authorized college.
+ *      Any mismatch throws a Forbidden error (anti-tamper / prevents forged collegeId).
+ *    - User must have an active membership for this college.
+ * 4. Returns authorizedCollegeId string. Throws clean error if missing or unauthorized.
+ */
+export async function resolveAuthorizedCollegeId(
+  session: AdminSession,
+  requestedCollegeId?: string | null
+): Promise<string> {
+  if (!session.isAuthenticated || !session.isActive) {
+    throw new Error('Unauthorized: Administrator session is not authenticated or active.');
+  }
+
+  let authorizedCollegeId: string | null = null;
+
+  if (session.isPlatformSuperAdmin) {
+    // 1. Super Admin: Allow managing the selected institution
+    if (requestedCollegeId && requestedCollegeId.trim()) {
+      const candidateId = requestedCollegeId.trim();
+      const collegeExists = session.colleges.some((c) => c.collegeId === candidateId);
+      if (!collegeExists) {
+        throw new Error(`Unauthorized: Target institution [${candidateId}] does not exist or is inactive.`);
+      }
+      authorizedCollegeId = candidateId;
+    } else if (session.activeCollegeId) {
+      authorizedCollegeId = session.activeCollegeId;
+    } else if (session.colleges.length > 0) {
+      authorizedCollegeId = session.colleges[0].collegeId;
+    }
+  } else {
+    // 2. College Admin: Derive collegeId strictly from the authenticated user's authorized active college/membership
+    const activeId = session.activeCollegeId;
+    if (!activeId) {
+      throw new Error('Unauthorized: No active institutional membership established for this account.');
+    }
+
+    // Verify active membership exists and is ACTIVE
+    const membership = session.colleges.find(
+      (c) => c.collegeId === activeId && c.status === 'ACTIVE'
+    );
+    if (!membership) {
+      throw new Error(`Forbidden: You do not possess active administrative permissions for institution [${activeId}].`);
+    }
+
+    // Anti-tamper check: If client supplied a collegeId, it MUST match the user's active college
+    if (requestedCollegeId && requestedCollegeId.trim() && requestedCollegeId.trim() !== activeId) {
+      throw new Error(`Forbidden: Cross-tenant operation blocked. You cannot manage data for institution [${requestedCollegeId}].`);
+    }
+
+    authorizedCollegeId = activeId;
+  }
+
+  if (!authorizedCollegeId) {
+    throw new Error('Unauthorized: Missing tenant context. Unable to establish target institution.');
+  }
+
+  return authorizedCollegeId;
+}

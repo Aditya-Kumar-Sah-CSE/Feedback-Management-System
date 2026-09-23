@@ -57,6 +57,7 @@ interface Props {
   initialFacultyTotal?: number;
   initialSubjectTotal?: number;
   initialAssignmentTotal?: number;
+  activeCollegeId?: string;
 }
 
 export function AcademicManagementTab({
@@ -69,6 +70,7 @@ export function AcademicManagementTab({
   initialFacultyTotal,
   initialSubjectTotal,
   initialAssignmentTotal,
+  activeCollegeId,
 }: Props) {
   const [activeSubTab, setActiveSubTab] = useState<
     'faculties' | 'subjects' | 'assignments' | 'years' | 'branches' | 'semesters'
@@ -125,13 +127,14 @@ export function AcademicManagementTab({
       search: debouncedFacultySearch,
       department: facultyDeptFilter,
       status: facultyStatusFilter,
+      collegeId: activeCollegeId,
     });
     setFacultyLoading(false);
     if (res.success) {
       setFacultyList(res.data as Faculty[]);
       setFacultyTotal(res.total);
     }
-  }, [facultyPage, facultyPageSize, debouncedFacultySearch, facultyDeptFilter, facultyStatusFilter]);
+  }, [facultyPage, facultyPageSize, debouncedFacultySearch, facultyDeptFilter, facultyStatusFilter, activeCollegeId]);
 
   useEffect(() => {
     // Only fetch if filters or page actually changed from initial state
@@ -180,13 +183,14 @@ export function AcademicManagementTab({
       branchId: subjectBranchFilter,
       semesterId: subjectSemesterFilter,
       status: subjectStatusFilter,
+      collegeId: activeCollegeId,
     });
     setSubjectLoading(false);
     if (res.success) {
       setSubjectList(res.data as Subject[]);
       setSubjectTotal(res.total);
     }
-  }, [subjectPage, subjectPageSize, debouncedSubjectSearch, subjectBranchFilter, subjectSemesterFilter, subjectStatusFilter]);
+  }, [subjectPage, subjectPageSize, debouncedSubjectSearch, subjectBranchFilter, subjectSemesterFilter, subjectStatusFilter, activeCollegeId]);
 
   useEffect(() => {
     if (debouncedSubjectSearch || subjectBranchFilter !== 'ALL' || subjectSemesterFilter !== 'ALL' || subjectStatusFilter !== 'ALL' || subjectPage > 1 || subjectPageSize !== 20) {
@@ -225,13 +229,14 @@ export function AcademicManagementTab({
       academicYearId: assignYearFilter,
       branchId: assignBranchFilter,
       semesterId: assignSemesterFilter,
+      collegeId: activeCollegeId,
     });
     setAssignLoading(false);
     if (res.success) {
       setAssignmentList(res.data as FacultySubjectAssignment[]);
       setAssignTotal(res.total);
     }
-  }, [assignPage, assignPageSize, assignYearFilter, assignBranchFilter, assignSemesterFilter]);
+  }, [assignPage, assignPageSize, assignYearFilter, assignBranchFilter, assignSemesterFilter, activeCollegeId]);
 
   useEffect(() => {
     if (assignYearFilter !== 'ALL' || assignBranchFilter !== 'ALL' || assignSemesterFilter !== 'ALL' || assignPage > 1 || assignPageSize !== 20) {
@@ -284,6 +289,7 @@ export function AcademicManagementTab({
         designation: facDesig,
         employee_id: facEmpId || undefined,
         is_active: true,
+        collegeId: activeCollegeId,
       });
       if (res.success && res.faculty) {
         setMessage({ type: 'success', text: `Faculty ${facName} added successfully.` });
@@ -311,6 +317,7 @@ export function AcademicManagementTab({
         designation: f.designation,
         employee_id: f.employee_id || undefined,
         is_active: nextActive,
+        collegeId: activeCollegeId,
       });
       if (!res.success) {
         // Rollback
@@ -331,7 +338,7 @@ export function AcademicManagementTab({
     setFacultyTotal((prev) => Math.max(0, prev - 1));
 
     startTransition(async () => {
-      const res = await deleteFacultyAction(id);
+      const res = await deleteFacultyAction(id, activeCollegeId);
       if (res.success) {
         setMessage({ type: 'success', text: `Faculty ${name} deleted successfully.` });
       } else {
@@ -352,6 +359,7 @@ export function AcademicManagementTab({
         branch_id: subBranchId || undefined,
         semester_id: subSemesterId || undefined,
         is_active: true,
+        collegeId: activeCollegeId,
       });
       if (res.success && res.subject) {
         setMessage({ type: 'success', text: `Subject ${subName} (${subCode}) added successfully.` });
@@ -378,6 +386,7 @@ export function AcademicManagementTab({
         branch_id: s.branch_id || undefined,
         semester_id: s.semester_id || undefined,
         is_active: nextActive,
+        collegeId: activeCollegeId,
       });
       if (!res.success) {
         setSubjectList((prev) =>
@@ -397,7 +406,7 @@ export function AcademicManagementTab({
     setSubjectTotal((prev) => Math.max(0, prev - 1));
 
     startTransition(async () => {
-      const res = await deleteSubjectAction(id);
+      const res = await deleteSubjectAction(id, activeCollegeId);
       if (res.success) {
         setMessage({ type: 'success', text: `Subject ${name} deleted successfully.` });
       } else {
@@ -423,6 +432,7 @@ export function AcademicManagementTab({
         branch_id: assignBranchId || undefined,
         semester_id: assignSemesterId || undefined,
         is_active: true,
+        collegeId: activeCollegeId,
       });
       if (res.success && res.assignment) {
         setMessage({ type: 'success', text: 'Faculty assignment created successfully.' });
@@ -459,7 +469,7 @@ export function AcademicManagementTab({
     setAssignTotal((prev) => Math.max(0, prev - 1));
 
     startTransition(async () => {
-      const res = await deleteAssignmentAction(id);
+      const res = await deleteAssignmentAction(id, activeCollegeId);
       if (res.success) {
         setMessage({ type: 'success', text: 'Assignment removed.' });
       } else {
@@ -474,7 +484,7 @@ export function AcademicManagementTab({
     e.preventDefault();
     setMessage(null);
     startTransition(async () => {
-      const res = await createAcademicYearAction({ name: yearName, is_active: yearActive });
+      const res = await createAcademicYearAction({ name: yearName, is_active: yearActive, collegeId: activeCollegeId });
       if (res.success && res.year) {
         setMessage({ type: 'success', text: `Academic Year ${yearName} added.` });
         setYearList((prev) => [res.year as AcademicYear, ...prev]);
@@ -492,7 +502,7 @@ export function AcademicManagementTab({
     );
 
     startTransition(async () => {
-      const res = await updateAcademicYearAction(y.id, { name: y.name, is_active: nextActive });
+      const res = await updateAcademicYearAction(y.id, { name: y.name, is_active: nextActive, collegeId: activeCollegeId });
       if (!res.success) {
         setYearList((prev) =>
           prev.map((item) => (item.id === y.id ? { ...item, is_active: y.is_active } : item))
@@ -506,7 +516,7 @@ export function AcademicManagementTab({
     e.preventDefault();
     setMessage(null);
     startTransition(async () => {
-      const res = await createBranchAction({ name: branchName, code: branchCode, is_active: true });
+      const res = await createBranchAction({ name: branchName, code: branchCode, is_active: true, collegeId: activeCollegeId });
       if (res.success && res.branch) {
         setMessage({ type: 'success', text: `Branch ${branchName} (${branchCode}) created.` });
         setBranchList((prev) => [...prev, res.branch as Branch]);
@@ -525,7 +535,7 @@ export function AcademicManagementTab({
     );
 
     startTransition(async () => {
-      const res = await updateBranchAction(b.id, { name: b.name, code: b.code, is_active: nextActive });
+      const res = await updateBranchAction(b.id, { name: b.name, code: b.code, is_active: nextActive, collegeId: activeCollegeId });
       if (!res.success) {
         setBranchList((prev) =>
           prev.map((item) => (item.id === b.id ? { ...item, is_active: b.is_active } : item))
@@ -550,6 +560,7 @@ export function AcademicManagementTab({
         name: editBranchName,
         code: editBranchCode,
         is_active: editingBranch.is_active,
+        collegeId: activeCollegeId,
       });
       if (res.success) {
         setMessage({
@@ -574,7 +585,7 @@ export function AcademicManagementTab({
     if (!deletingBranch) return;
     setMessage(null);
     startTransition(async () => {
-      const res = await deleteBranchAction(deletingBranch.id);
+      const res = await deleteBranchAction(deletingBranch.id, activeCollegeId);
       if (res.success) {
         setMessage({
           type: 'success',
@@ -601,6 +612,7 @@ export function AcademicManagementTab({
         year_number: s.year_number,
         semester_number: s.semester_number,
         is_active: nextActive,
+        collegeId: activeCollegeId,
       });
       if (!res.success) {
         setSemesterList((prev) =>

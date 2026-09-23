@@ -47,8 +47,19 @@ export default async function AdminResultsHubPage() {
     `)
     .order('created_at', { ascending: false });
 
+  let yearQuery = supabase.from('academic_years').select('*').order('name', { ascending: false });
+  let branchQuery = supabase.from('branches').select('id, name, code, is_active').eq('is_active', true).order('name', { ascending: true });
+  let semesterQuery = supabase.from('semesters').select('*').order('semester_number', { ascending: true });
+  let facultyQuery = supabase.from('faculties').select('*').order('name', { ascending: true });
+  let subjectQuery = supabase.from('subjects').select('*').order('name', { ascending: true });
+
   if (session.activeCollegeId) {
     formsQuery = formsQuery.eq('college_id', session.activeCollegeId);
+    yearQuery = yearQuery.eq('college_id', session.activeCollegeId);
+    branchQuery = branchQuery.eq('college_id', session.activeCollegeId);
+    semesterQuery = semesterQuery.eq('college_id', session.activeCollegeId);
+    facultyQuery = facultyQuery.eq('college_id', session.activeCollegeId);
+    subjectQuery = subjectQuery.eq('college_id', session.activeCollegeId);
   }
 
   // 1. Fetch Academic Entities for Filters
@@ -60,11 +71,11 @@ export default async function AdminResultsHubPage() {
     { data: subjects },
     { data: forms },
   ] = await Promise.all([
-    supabase.from('academic_years').select('*').order('name', { ascending: false }),
-    supabase.from('branches').select('id, name, code, is_active').eq('is_active', true).order('name', { ascending: true }),
-    supabase.from('semesters').select('*').order('number', { ascending: true }),
-    supabase.from('faculties').select('*').order('name', { ascending: true }),
-    supabase.from('subjects').select('*').order('name', { ascending: true }),
+    yearQuery,
+    branchQuery,
+    semesterQuery,
+    facultyQuery,
+    subjectQuery,
     formsQuery,
   ]);
 

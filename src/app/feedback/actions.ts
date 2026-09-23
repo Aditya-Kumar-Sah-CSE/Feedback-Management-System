@@ -640,18 +640,23 @@ export async function getPublicActiveFormsAction(params?: {
  * Dynamically fetch all active branches from the database table.
  * Filtered by is_active = true and sorted alphabetically by name.
  */
-export async function getActiveBranchesAction(): Promise<{
+export async function getActiveBranchesAction(collegeId?: string): Promise<{
   success: boolean;
   branches: Branch[];
   error?: string;
 }> {
   try {
     const supabase = await getPublicDb();
-    const { data: branches, error } = await supabase
+    let query = supabase
       .from('branches')
       .select('id, name, code, is_active, created_at, updated_at')
-      .eq('is_active', true)
-      .order('name', { ascending: true });
+      .eq('is_active', true);
+
+    if (collegeId && isValidUUID(collegeId)) {
+      query = query.eq('college_id', collegeId);
+    }
+
+    const { data: branches, error } = await query.order('name', { ascending: true });
 
     if (error) {
       console.error('[GET_ACTIVE_BRANCHES]', error);

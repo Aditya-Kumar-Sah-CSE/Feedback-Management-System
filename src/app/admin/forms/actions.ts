@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAdminSession } from '@/lib/auth/admin-auth';
+import { getAdminSession, resolveAuthorizedCollegeId } from '@/lib/auth/admin-auth';
 import { assertFormGenerationAccess, assertSheetIntegrationAccess } from '@/lib/billing/access-control';
 
 async function getAdminDb() {
@@ -266,9 +266,11 @@ export async function validateAndPrepareFormDraftAction(payload: CreateFormPaylo
   const adminEmail = session.admin?.email || session.user?.email || '';
   const supabase = customClient || (await getAdminDb());
 
-  const targetCollegeId = session.activeCollegeId;
-  if (!targetCollegeId) {
-    return { success: false, error: 'Unauthorized: No active institution selected for form creation.' };
+  let targetCollegeId: string;
+  try {
+    targetCollegeId = await resolveAuthorizedCollegeId(session, payload.collegeId);
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Unauthorized: Target institution resolution failed.' };
   }
 
   const isGoogleReady = await isCollegeGoogleConfigured(targetCollegeId);
@@ -289,9 +291,9 @@ export async function validateAndPrepareFormDraftAction(payload: CreateFormPaylo
       { data: branch },
       { data: semester },
     ] = await Promise.all([
-      supabase.from('academic_years').select('id, name, is_active').eq('id', payload.academicYearId).single(),
-      supabase.from('branches').select('id, name, code, is_active').eq('id', payload.branchId).single(),
-      supabase.from('semesters').select('id, name, is_active').eq('id', payload.semesterId).single(),
+      supabase.from('academic_years').select('id, name, is_active').eq('id', payload.academicYearId).eq('college_id', targetCollegeId).single(),
+      supabase.from('branches').select('id, name, code, is_active').eq('id', payload.branchId).eq('college_id', targetCollegeId).single(),
+      supabase.from('semesters').select('id, name, is_active').eq('id', payload.semesterId).eq('college_id', targetCollegeId).single(),
     ]);
 
     if (!academicYear || !academicYear.is_active) {
@@ -312,6 +314,7 @@ export async function validateAndPrepareFormDraftAction(payload: CreateFormPaylo
     const { data: existingForm } = await supabase
       .from('feedback_forms')
       .select('id, status, title')
+      .eq('college_id', targetCollegeId)
       .eq('academic_year_id', payload.academicYearId)
       .eq('branch_id', payload.branchId)
       .eq('semester_id', payload.semesterId)
@@ -343,6 +346,7 @@ export async function validateAndPrepareFormDraftAction(payload: CreateFormPaylo
         subject:subjects(id, name, code, is_active)
       `)
       .eq('academic_year_id', payload.academicYearId)
+      .eq('college_id', targetCollegeId)
       .eq('is_active', true);
 
     if (assignErr) {
@@ -456,11 +460,11 @@ export async function validateAndPrepareFormDraftAction(payload: CreateFormPaylo
     { data: faculty },
     { data: subject },
   ] = await Promise.all([
-    supabase.from('academic_years').select('id, name, is_active').eq('id', payload.academicYearId).single(),
-    supabase.from('branches').select('id, name, code, is_active').eq('id', payload.branchId).single(),
-    supabase.from('semesters').select('id, name, is_active').eq('id', payload.semesterId).single(),
-    supabase.from('faculties').select('id, name, is_active').eq('id', payload.facultyId!).single(),
-    supabase.from('subjects').select('id, name, code, is_active').eq('id', payload.subjectId!).single(),
+    supabase.from('academic_years').select('id, name, is_active').eq('id', payload.academicYearId).eq('college_id', targetCollegeId).single(),
+    supabase.from('branches').select('id, name, code, is_active').eq('id', payload.branchId).eq('college_id', targetCollegeId).single(),
+    supabase.from('semesters').select('id, name, is_active').eq('id', payload.semesterId).eq('college_id', targetCollegeId).single(),
+    supabase.from('faculties').select('id, name, is_active').eq('id', payload.facultyId!).eq('college_id', targetCollegeId).single(),
+    supabase.from('subjects').select('id, name, code, is_active').eq('id', payload.subjectId!).eq('college_id', targetCollegeId).single(),
   ]);
 
   if (!academicYear || !academicYear.is_active) {
@@ -483,6 +487,7 @@ export async function validateAndPrepareFormDraftAction(payload: CreateFormPaylo
   const { data: assignment } = await supabase
     .from('faculty_subject_assignments')
     .select('id')
+    .eq('college_id', targetCollegeId)
     .eq('academic_year_id', payload.academicYearId)
     .eq('branch_id', payload.branchId)
     .eq('semester_id', payload.semesterId)
@@ -515,6 +520,7 @@ export async function validateAndPrepareFormDraftAction(payload: CreateFormPaylo
   const { data: existingForm } = await supabase
     .from('feedback_forms')
     .select('id, status, title')
+    .eq('college_id', targetCollegeId)
     .eq('academic_year_id', payload.academicYearId)
     .eq('branch_id', payload.branchId)
     .eq('semester_id', payload.semesterId)
