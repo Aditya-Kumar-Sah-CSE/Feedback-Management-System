@@ -66,6 +66,22 @@ export interface FacultyGridAnalyticsItem {
   report: FormAnalyticsReport;
 }
 
+export type PerformanceGrade =
+  | 'EXCELLENT'
+  | 'VERY GOOD'
+  | 'GOOD'
+  | 'SATISFACTORY'
+  | 'NEEDS ATTENTION'
+  | 'NO DATA';
+
+export interface PerformanceGradeInfo {
+  grade: PerformanceGrade;
+  label: string;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+}
+
 export interface FormAnalyticsReport {
   formId: string;
   collegeId?: string;
@@ -87,10 +103,15 @@ export interface FormAnalyticsReport {
   percentage?: number;
   validResponses: number;
   unansweredResponses: number;
-  averageOverallScore: number; // 0.00 to 5.00
-  compositeAverageScore: number; // Mean across all 8 parameters
+  parameterAverageScore: number; // 1.00 to 5.00: Mean across evaluation parameters Q1-Q7 (e.g. 2.71)
+  averageOverallScore: number; // 1.00 to 5.00: Canonical Overall Rating Q8 (e.g. 3.00)
+  compositeAverageScore: number; // Mean across all parameters (backward compatibility)
+  performanceGrade: PerformanceGrade;
+  performanceGradeInfo?: PerformanceGradeInfo;
   parameters: ParameterMetrics[];
-  distribution: OverallDistribution;
+  distribution: OverallDistribution; // All parameters distribution
+  parameterDistribution?: OverallDistribution; // Q1–Q7 evaluation parameters distribution
+  overallRatingDistribution?: OverallDistribution; // Q8 standalone overall rating distribution
   hasData: boolean;
   generatedAt: string;
   isSemesterForm?: boolean;
@@ -130,10 +151,15 @@ export interface AggregatedAnalyticsReport {
   evaluatedItems?: number;
   percentage?: number;
   validResponses: number;
+  parameterAverageScore: number;
   averageOverallScore: number;
   compositeAverageScore: number;
+  performanceGrade: PerformanceGrade;
+  performanceGradeInfo?: PerformanceGradeInfo;
   parameters: ParameterMetrics[];
   distribution: OverallDistribution;
+  parameterDistribution?: OverallDistribution;
+  overallRatingDistribution?: OverallDistribution;
   facultyComparisons: FacultyComparisonItem[];
   hasData: boolean;
   generatedAt: string;

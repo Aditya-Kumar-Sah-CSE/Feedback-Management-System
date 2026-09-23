@@ -6,6 +6,7 @@
 
 import PDFDocument from 'pdfkit';
 import { FormAnalyticsReport, AggregatedAnalyticsReport } from './types';
+import { calculatePerformanceGrade } from './engine';
 import { CollegeBranding, DEFAULT_BRANDING } from '@/lib/tenant/branding';
 
 // Palette Tokens
@@ -422,14 +423,7 @@ export async function generateIndividualFacultyPDF(
 
   // Box 4: Performance Grade
   const box4X = margin + (boxWidth + boxGap) * 3;
-  let gradeText = 'No Data';
-  if (report.hasData) {
-    if (report.averageOverallScore >= 4.5) gradeText = 'EXCELLENT';
-    else if (report.averageOverallScore >= 3.75) gradeText = 'VERY GOOD';
-    else if (report.averageOverallScore >= 3.0) gradeText = 'GOOD';
-    else if (report.averageOverallScore >= 2.0) gradeText = 'SATISFACTORY';
-    else gradeText = 'NEEDS ATTN';
-  }
+  const gradeText = report.performanceGrade || calculatePerformanceGrade(report.averageOverallScore, report.hasData);
   doc.rect(box4X, currentY, boxWidth, boxHeight).fillAndStroke(COLORS.bgLight, COLORS.border);
   doc.font('Helvetica').fontSize(7.5).fillColor(COLORS.secondary).text('PERFORMANCE GRADE', box4X, currentY + 8, { width: boxWidth, align: 'center' });
   doc.font('Helvetica-Bold').fontSize(12).fillColor(COLORS.primary).text(gradeText, box4X, currentY + 24, { width: boxWidth, align: 'center' });
@@ -996,17 +990,7 @@ export async function generateSemesterComparativePDF(
 
   // Box 5: Performance Grade
   const box5X = margin + (boxWidth + boxGap) * 4;
-  const gradeLabel = !report.hasData
-    ? 'NO DATA'
-    : benchmarkScore >= 4.5
-    ? 'EXCELLENT'
-    : benchmarkScore >= 3.75
-    ? 'VERY GOOD'
-    : benchmarkScore >= 3.0
-    ? 'GOOD'
-    : benchmarkScore >= 2.0
-    ? 'SATISFACTORY'
-    : 'NEEDS ATTN';
+  const gradeLabel = report.performanceGrade || calculatePerformanceGrade(benchmarkScore, report.hasData);
   doc.rect(box5X, currentY, boxWidth, boxHeight).fillAndStroke('#F8FAFC', COLORS.border);
   doc.font('Helvetica').fontSize(7).fillColor(COLORS.secondary).text('PERFORMANCE GRADE', box5X, currentY + 7, { width: boxWidth, align: 'center' });
   doc.font('Helvetica-Bold').fontSize(11).fillColor(bColor).text(gradeLabel, box5X, currentY + 22, { width: boxWidth, align: 'center' });

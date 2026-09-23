@@ -15,6 +15,7 @@ import {
   User,
   GraduationCap,
   CheckCircle2,
+  RefreshCw,
 } from 'lucide-react';
 import {
   AdminResponsesResult,
@@ -22,6 +23,7 @@ import {
   getFormResponsesAction,
   getResponseDetailAction,
 } from '@/app/admin/results/responses/actions';
+import { syncSingleFormResponsesAction } from '@/app/admin/results/actions';
 import { downloadPdfFile } from '@/lib/utils/pdf-download';
 
 interface Props {
@@ -46,10 +48,38 @@ export function FormResponsesConsole({ formId, initialData }: Props) {
     type: 'error' | 'success';
     message: string;
   } | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    setDownloadNotification(null);
+    try {
+      const res = await syncSingleFormResponsesAction(formId);
+      if (res.success) {
+        setDownloadNotification({
+          type: 'success',
+          message: res.message || `Responses synchronized successfully. Total: ${res.totalResponses}.`,
+        });
+        loadResponses(1);
+      } else {
+        setDownloadNotification({
+          type: 'error',
+          message: res.error || 'Failed to synchronize responses.',
+        });
+      }
+    } catch (err: any) {
+      setDownloadNotification({
+        type: 'error',
+        message: err?.message || 'Error triggering response sync.',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const handleDownloadResponsePdf = async (responseId: string) => {
     if (!responseId) {
@@ -182,6 +212,16 @@ export function FormResponsesConsole({ formId, initialData }: Props) {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSync}
+              disabled={isSyncing}
+              aria-busy={isSyncing ? 'true' : undefined}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-bce-cobalt hover:bg-bce-navy text-white rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'Syncing...' : 'Sync Responses'}</span>
+            </button>
             <Link
               href={`/admin/dashboard/results/${formId}`}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-300"
@@ -325,8 +365,19 @@ export function FormResponsesConsole({ formId, initialData }: Props) {
                     <p className="text-xs text-slate-400 mt-1">
                       {search || startDate || endDate
                         ? 'No responses match your search or date filter criteria.'
-                        : 'No students have submitted feedback responses for this form yet.'}
+                        : 'No students have submitted feedback responses for this form yet, or responses need to be synced.'}
                     </p>
+                    {!search && !startDate && !endDate && (
+                      <button
+                        type="button"
+                        onClick={handleSync}
+                        disabled={isSyncing}
+                        className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-bce-cobalt hover:bg-bce-navy text-white rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                        <span>{isSyncing ? 'Syncing...' : 'Sync Responses Now'}</span>
+                      </button>
+                    )}
                   </td>
                 </tr>
               ) : (

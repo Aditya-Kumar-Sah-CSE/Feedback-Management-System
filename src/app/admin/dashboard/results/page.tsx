@@ -89,8 +89,10 @@ export default async function AdminResultsHubPage() {
     formsWithResponses: 0,
     totalResponses: 0,
     validResponses: 0,
+    parameterAverageScore: 0,
     averageOverallScore: 0,
     compositeAverageScore: 0,
+    performanceGrade: 'NO DATA' as const,
     parameters: [],
     distribution: {
       excellentCount: 0,

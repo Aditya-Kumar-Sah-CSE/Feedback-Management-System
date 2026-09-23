@@ -208,6 +208,8 @@ export async function getFormResponsesAction(
           googleFormId: resolvedFormId,
           googleSheetId: resolvedSheetId,
           formId,
+          callerSession: session,
+          skipAuthCheck: true,
         });
       } catch (syncErr) {
         console.warn('Auto-sync in getFormResponsesAction encountered an issue:', syncErr);

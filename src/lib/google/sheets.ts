@@ -194,11 +194,19 @@ export async function appendResponsesToSheet(
   if (rows.length === 0) return { updatedRows: 0 };
 
   return executeWithCollegeGoogleOAuthRetry(collegeId, async ({ sheets }) => {
+    let sheetTitle = 'Form Responses';
+    try {
+      const meta = await sheets.spreadsheets.get({ spreadsheetId });
+      sheetTitle = meta.data.sheets?.[0]?.properties?.title || 'Form Responses';
+    } catch {
+      sheetTitle = 'Form Responses';
+    }
+
     const lastColLetter = getColumnLetter(FEEDBACK_SHEET_HEADERS.length);
 
     const res = await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: `'Form Responses'!A:${lastColLetter}`,
+      range: `'${sheetTitle}'!A:${lastColLetter}`,
       valueInputOption: 'USER_ENTERED',
       insertDataOption: 'INSERT_ROWS',
       requestBody: {
@@ -221,9 +229,17 @@ export async function getExistingSheetResponseIds(
 ): Promise<Set<string>> {
   try {
     return await executeWithCollegeGoogleOAuthRetry(collegeId, async ({ sheets }) => {
+      let sheetTitle = 'Form Responses';
+      try {
+        const meta = await sheets.spreadsheets.get({ spreadsheetId });
+        sheetTitle = meta.data.sheets?.[0]?.properties?.title || 'Form Responses';
+      } catch {
+        sheetTitle = 'Form Responses';
+      }
+
       const headerRes = await sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: "'Form Responses'!1:1",
+        range: `'${sheetTitle}'!1:1`,
       });
 
       const headers = (headerRes.data.values?.[0] || []).map(h => String(h || '').trim().toLowerCase());
@@ -236,7 +252,7 @@ export async function getExistingSheetResponseIds(
       const colLetter = getColumnLetter(respIdIdx + 1);
       const res = await sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: `'Form Responses'!${colLetter}2:${colLetter}`,
+        range: `'${sheetTitle}'!${colLetter}2:${colLetter}`,
       });
 
       const rows = res.data.values || [];
@@ -259,18 +275,17 @@ export async function fetchSingleResponseFromSheet(
     return await executeWithCollegeGoogleOAuthRetry(collegeId, async ({ sheets }) => {
       let rows: any[][] = [];
       try {
-        const res = await sheets.spreadsheets.values.get({
-          spreadsheetId,
-          range: "'Form Responses'!A1:ZZ",
-        });
-        rows = res.data.values || [];
-      } catch {
-        // Fallback: query first sheet title dynamically
         const meta = await sheets.spreadsheets.get({ spreadsheetId });
         const sheetTitle = meta.data.sheets?.[0]?.properties?.title || 'Form Responses';
         const res = await sheets.spreadsheets.values.get({
           spreadsheetId,
           range: `'${sheetTitle}'!A1:ZZ`,
+        });
+        rows = res.data.values || [];
+      } catch {
+        const res = await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: "'Form Responses'!A1:ZZ",
         });
         rows = res.data.values || [];
       }
@@ -282,7 +297,19 @@ export async function fetchSingleResponseFromSheet(
         h => h.toLowerCase().includes('response id') || (h.toLowerCase() === 'id' && !h.toLowerCase().includes('student'))
       );
 
-      if (respIdIdx === -1) return null;
+      if (respIdIdx === -1) {
+        // Fallback for native sheets without a "Response ID" column
+        if (responseId.startsWith('row-')) {
+          const rowNum = parseInt(responseId.replace('row-', ''), 10);
+          if (!isNaN(rowNum) && rowNum >= 2 && rows[rowNum - 1]) {
+            return {
+              headers,
+              row: rows[rowNum - 1].map(cell => String(cell || '').trim()),
+            };
+          }
+        }
+        return null;
+      }
 
       for (let i = 1; i < rows.length; i++) {
         const row = rows[i];
@@ -290,6 +317,17 @@ export async function fetchSingleResponseFromSheet(
           return {
             headers,
             row: row.map(cell => String(cell || '').trim()),
+          };
+        }
+      }
+
+      // If not matched by Response ID column, check if it's a row- based ID
+      if (responseId.startsWith('row-')) {
+        const rowNum = parseInt(responseId.replace('row-', ''), 10);
+        if (!isNaN(rowNum) && rowNum >= 2 && rows[rowNum - 1]) {
+          return {
+            headers,
+            row: rows[rowNum - 1].map(cell => String(cell || '').trim()),
           };
         }
       }

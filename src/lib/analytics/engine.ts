@@ -11,8 +11,95 @@ import {
   ParameterMetrics,
   OverallDistribution,
   FacultyComparisonItem,
+  PerformanceGrade,
+  PerformanceGradeInfo,
   RATING_WEIGHTS,
 } from './types';
+
+/**
+ * Institutional Performance Grading Rubric:
+ * Evaluated on a 5.00-point scale:
+ * >= 4.50: EXCELLENT
+ * >= 3.75: VERY GOOD
+ * >= 3.00: GOOD
+ * >= 2.00: SATISFACTORY
+ * < 2.00: NEEDS ATTENTION
+ * No valid data: NO DATA
+ */
+export function calculatePerformanceGrade(
+  score: number | null | undefined,
+  hasData: boolean
+): PerformanceGrade {
+  if (!hasData || score === null || score === undefined || isNaN(score) || score <= 0) {
+    return 'NO DATA';
+  }
+  if (score >= 4.5) return 'EXCELLENT';
+  if (score >= 3.75) return 'VERY GOOD';
+  if (score >= 3.0) return 'GOOD';
+  if (score >= 2.0) return 'SATISFACTORY';
+  return 'NEEDS ATTENTION';
+}
+
+/**
+ * Returns canonical badge styling and label for a performance grade
+ */
+export function getPerformanceGradeInfo(
+  score: number | null | undefined,
+  hasData: boolean
+): PerformanceGradeInfo {
+  const grade = calculatePerformanceGrade(score, hasData);
+  switch (grade) {
+    case 'EXCELLENT':
+      return {
+        grade,
+        label: 'EXCELLENT',
+        color: 'text-emerald-700',
+        bgColor: 'bg-emerald-50',
+        borderColor: 'border-emerald-300',
+      };
+    case 'VERY GOOD':
+      return {
+        grade,
+        label: 'VERY GOOD',
+        color: 'text-indigo-700',
+        bgColor: 'bg-indigo-50',
+        borderColor: 'border-indigo-300',
+      };
+    case 'GOOD':
+      return {
+        grade,
+        label: 'GOOD',
+        color: 'text-blue-700',
+        bgColor: 'bg-blue-50',
+        borderColor: 'border-blue-300',
+      };
+    case 'SATISFACTORY':
+      return {
+        grade,
+        label: 'SATISFACTORY',
+        color: 'text-amber-700',
+        bgColor: 'bg-amber-50',
+        borderColor: 'border-amber-300',
+      };
+    case 'NEEDS ATTENTION':
+      return {
+        grade,
+        label: 'NEEDS ATTENTION',
+        color: 'text-red-700',
+        bgColor: 'bg-red-50',
+        borderColor: 'border-red-300',
+      };
+    case 'NO DATA':
+    default:
+      return {
+        grade: 'NO DATA',
+        label: 'NO DATA',
+        color: 'text-slate-400',
+        bgColor: 'bg-slate-100',
+        borderColor: 'border-slate-300',
+      };
+  }
+}
 
 /**
  * Shared helper to count unique student submissions deduplicating by authoritative Google Forms response ID.
@@ -67,7 +154,6 @@ export function calculateFormAnalytics(params: {
   responses: CanonicalResponseRow[];
 }): FormAnalyticsReport {
   const { responses } = params;
-  const isSemester = params.formType === 'SEMESTER_FEEDBACK';
 
   const isValidRow = (r: CanonicalResponseRow) =>
     r.isValid ?? Object.values(r.ratings || {}).some(v => v !== null && v !== undefined);
@@ -171,7 +257,7 @@ export function calculateFormAnalytics(params: {
     };
   });
 
-  // Overall distribution
+  // Overall distribution across all 8 parameters
   const totalValidRatings =
     globalExcellent + globalVeryGood + globalGood + globalSatisfactory + globalUnsatisfactory;
 
@@ -189,6 +275,71 @@ export function calculateFormAnalytics(params: {
     unsatisfactoryPct: totalValidRatings > 0 ? Number(((globalUnsatisfactory / totalValidRatings) * 100).toFixed(1)) : 0,
   };
 
+  // Evaluation Parameters (Q1 to Q7) metrics & distribution
+  let paramScoresSum = 0;
+  let paramRatingsCount = 0;
+  let paramExcellent = 0;
+  let paramVeryGood = 0;
+  let paramGood = 0;
+  let paramSatisfactory = 0;
+  let paramUnsatisfactory = 0;
+
+  for (const param of parameters) {
+    if (param.parameterId >= 1 && param.parameterId <= 7) {
+      paramExcellent += param.excellentCount;
+      paramVeryGood += param.veryGoodCount;
+      paramGood += param.goodCount;
+      paramSatisfactory += param.satisfactoryCount;
+      paramUnsatisfactory += param.unsatisfactoryCount;
+
+      const scoreSum =
+        param.excellentCount * RATING_WEIGHTS['Excellent'] +
+        param.veryGoodCount * RATING_WEIGHTS['Very Good'] +
+        param.goodCount * RATING_WEIGHTS['Good'] +
+        param.satisfactoryCount * RATING_WEIGHTS['Satisfactory'] +
+        param.unsatisfactoryCount * RATING_WEIGHTS['Unsatisfactory'];
+
+      paramScoresSum += scoreSum;
+      paramRatingsCount += param.validCount;
+    }
+  }
+
+  const parameterAverageScore =
+    paramRatingsCount > 0 ? Number((paramScoresSum / paramRatingsCount).toFixed(2)) : 0;
+
+  const totalValidParamRatings =
+    paramExcellent + paramVeryGood + paramGood + paramSatisfactory + paramUnsatisfactory;
+
+  const parameterDistribution: OverallDistribution = {
+    excellentCount: paramExcellent,
+    veryGoodCount: paramVeryGood,
+    goodCount: paramGood,
+    satisfactoryCount: paramSatisfactory,
+    unsatisfactoryCount: paramUnsatisfactory,
+    totalValidRatings: totalValidParamRatings,
+    excellentPct: totalValidParamRatings > 0 ? Number(((paramExcellent / totalValidParamRatings) * 100).toFixed(1)) : 0,
+    veryGoodPct: totalValidParamRatings > 0 ? Number(((paramVeryGood / totalValidParamRatings) * 100).toFixed(1)) : 0,
+    goodPct: totalValidParamRatings > 0 ? Number(((paramGood / totalValidParamRatings) * 100).toFixed(1)) : 0,
+    satisfactoryPct: totalValidParamRatings > 0 ? Number(((paramSatisfactory / totalValidParamRatings) * 100).toFixed(1)) : 0,
+    unsatisfactoryPct: totalValidParamRatings > 0 ? Number(((paramUnsatisfactory / totalValidParamRatings) * 100).toFixed(1)) : 0,
+  };
+
+  // Question 8 Standalone Overall Rating distribution
+  const param8 = parameters.find(p => p.parameterId === 8);
+  const overallRatingDistribution: OverallDistribution = {
+    excellentCount: param8?.excellentCount || 0,
+    veryGoodCount: param8?.veryGoodCount || 0,
+    goodCount: param8?.goodCount || 0,
+    satisfactoryCount: param8?.satisfactoryCount || 0,
+    unsatisfactoryCount: param8?.unsatisfactoryCount || 0,
+    totalValidRatings: param8?.validCount || 0,
+    excellentPct: param8?.excellentPct || 0,
+    veryGoodPct: param8?.veryGoodPct || 0,
+    goodPct: param8?.goodPct || 0,
+    satisfactoryPct: param8?.satisfactoryPct || 0,
+    unsatisfactoryPct: param8?.unsatisfactoryPct || 0,
+  };
+
   // Composite average across all parameters: strictly SUM(weights) / COUNT(ratings)
   const compositeAverageScore =
     totalAllRatingsCount > 0 ? Number((totalAllScores / totalAllRatingsCount).toFixed(2)) : 0;
@@ -197,11 +348,17 @@ export function calculateFormAnalytics(params: {
   const percentage =
     totalAllRatingsCount > 0 ? Number(((compositeAverageScore / 5) * 100).toFixed(2)) : 0;
 
-  // Parameter 8 is "Overall Rating" in BCE single-faculty form; for semester form, use composite benchmark
-  const param8 = parameters.find(p => p.parameterId === 8);
-  const averageOverallScore = isSemester
-    ? compositeAverageScore
-    : (param8 && param8.validCount > 0 ? param8.averageScore : compositeAverageScore);
+  // Canonical Overall Rating:
+  // Uses Question 8 if present and valid; falls back to parameterAverageScore or compositeAverageScore
+  const averageOverallScore =
+    param8 && param8.validCount > 0
+      ? param8.averageScore
+      : parameterAverageScore > 0
+      ? parameterAverageScore
+      : compositeAverageScore;
+
+  const performanceGrade = calculatePerformanceGrade(averageOverallScore, hasData);
+  const performanceGradeInfo = getPerformanceGradeInfo(averageOverallScore, hasData);
 
   return {
     formId: params.formId,
@@ -223,10 +380,15 @@ export function calculateFormAnalytics(params: {
     percentage,
     validResponses,
     unansweredResponses,
+    parameterAverageScore,
     averageOverallScore,
     compositeAverageScore,
+    performanceGrade,
+    performanceGradeInfo,
     parameters,
     distribution,
+    parameterDistribution,
+    overallRatingDistribution,
     hasData,
     generatedAt: new Date().toISOString(),
   };
@@ -356,12 +518,82 @@ export function aggregateAnalytics(
     unsatisfactoryPct: totalValidRatings > 0 ? Number(((globalUnsatisfactory / totalValidRatings) * 100).toFixed(1)) : 0,
   };
 
+  // Evaluation Parameters (Q1 to Q7) metrics & distribution
+  let paramScoresSum = 0;
+  let paramRatingsCount = 0;
+  let paramExcellent = 0;
+  let paramVeryGood = 0;
+  let paramGood = 0;
+  let paramSatisfactory = 0;
+  let paramUnsatisfactory = 0;
+
+  for (const param of parameters) {
+    if (param.parameterId >= 1 && param.parameterId <= 7) {
+      paramExcellent += param.excellentCount;
+      paramVeryGood += param.veryGoodCount;
+      paramGood += param.goodCount;
+      paramSatisfactory += param.satisfactoryCount;
+      paramUnsatisfactory += param.unsatisfactoryCount;
+
+      const scoreSum =
+        param.excellentCount * RATING_WEIGHTS['Excellent'] +
+        param.veryGoodCount * RATING_WEIGHTS['Very Good'] +
+        param.goodCount * RATING_WEIGHTS['Good'] +
+        param.satisfactoryCount * RATING_WEIGHTS['Satisfactory'] +
+        param.unsatisfactoryCount * RATING_WEIGHTS['Unsatisfactory'];
+
+      paramScoresSum += scoreSum;
+      paramRatingsCount += param.validCount;
+    }
+  }
+
+  const parameterAverageScore =
+    paramRatingsCount > 0 ? Number((paramScoresSum / paramRatingsCount).toFixed(2)) : 0;
+
+  const totalValidParamRatings =
+    paramExcellent + paramVeryGood + paramGood + paramSatisfactory + paramUnsatisfactory;
+
+  const parameterDistribution: OverallDistribution = {
+    excellentCount: paramExcellent,
+    veryGoodCount: paramVeryGood,
+    goodCount: paramGood,
+    satisfactoryCount: paramSatisfactory,
+    unsatisfactoryCount: paramUnsatisfactory,
+    totalValidRatings: totalValidParamRatings,
+    excellentPct: totalValidParamRatings > 0 ? Number(((paramExcellent / totalValidParamRatings) * 100).toFixed(1)) : 0,
+    veryGoodPct: totalValidParamRatings > 0 ? Number(((paramVeryGood / totalValidParamRatings) * 100).toFixed(1)) : 0,
+    goodPct: totalValidParamRatings > 0 ? Number(((paramGood / totalValidParamRatings) * 100).toFixed(1)) : 0,
+    satisfactoryPct: totalValidParamRatings > 0 ? Number(((paramSatisfactory / totalValidParamRatings) * 100).toFixed(1)) : 0,
+    unsatisfactoryPct: totalValidParamRatings > 0 ? Number(((paramUnsatisfactory / totalValidParamRatings) * 100).toFixed(1)) : 0,
+  };
+
+  // Question 8 Standalone Overall Rating distribution
+  const param8 = parameters.find(p => p.parameterId === 8);
+  const overallRatingDistribution: OverallDistribution = {
+    excellentCount: param8?.excellentCount || 0,
+    veryGoodCount: param8?.veryGoodCount || 0,
+    goodCount: param8?.goodCount || 0,
+    satisfactoryCount: param8?.satisfactoryCount || 0,
+    unsatisfactoryCount: param8?.unsatisfactoryCount || 0,
+    totalValidRatings: param8?.validCount || 0,
+    excellentPct: param8?.excellentPct || 0,
+    veryGoodPct: param8?.veryGoodPct || 0,
+    goodPct: param8?.goodPct || 0,
+    satisfactoryPct: param8?.satisfactoryPct || 0,
+    unsatisfactoryPct: param8?.unsatisfactoryPct || 0,
+  };
+
   const compositeAverageScore =
     totalAllRatings > 0 ? Number((totalAllScores / totalAllRatings).toFixed(2)) : 0;
 
-  const param8 = parameters.find(p => p.parameterId === 8);
+  // Canonical Overall Rating:
+  // Uses Question 8 if present and valid; falls back to parameterAverageScore or compositeAverageScore
   const averageOverallScore =
-    param8 && param8.validCount > 0 ? param8.averageScore : compositeAverageScore;
+    param8 && param8.validCount > 0
+      ? param8.averageScore
+      : parameterAverageScore > 0
+      ? parameterAverageScore
+      : compositeAverageScore;
 
   let totalStudents = 0;
   let evaluatedItems = 0;
@@ -373,6 +605,10 @@ export function aggregateAnalytics(
   const percentage =
     totalAllRatings > 0 ? Number(((compositeAverageScore / 5) * 100).toFixed(2)) : 0;
 
+  const hasData = validResponses > 0;
+  const performanceGrade = calculatePerformanceGrade(averageOverallScore, hasData);
+  const performanceGradeInfo = getPerformanceGradeInfo(averageOverallScore, hasData);
+
   // Build faculty comparison array for forms with responses
   const facultyComparisons: FacultyComparisonItem[] = formsWithData
     .map(f => ({
@@ -383,7 +619,7 @@ export function aggregateAnalytics(
       branch: f.branch,
       semester: f.semester,
       responseCount: f.totalStudents ?? f.totalResponses,
-      averageScore: f.compositeAverageScore || f.averageOverallScore,
+      averageScore: f.averageOverallScore || f.compositeAverageScore,
     }))
     .sort((a, b) => b.averageScore - a.averageScore);
 
@@ -397,12 +633,17 @@ export function aggregateAnalytics(
     evaluatedItems,
     percentage,
     validResponses,
+    parameterAverageScore,
     averageOverallScore,
     compositeAverageScore,
+    performanceGrade,
+    performanceGradeInfo,
     parameters,
     distribution,
+    parameterDistribution,
+    overallRatingDistribution,
     facultyComparisons,
-    hasData: validResponses > 0,
+    hasData,
     generatedAt: new Date().toISOString(),
   };
 }

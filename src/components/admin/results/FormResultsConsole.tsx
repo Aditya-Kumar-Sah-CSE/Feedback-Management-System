@@ -9,6 +9,7 @@ import {
   OverallDonutChart,
 } from './AnalyticsCharts';
 import { FormAnalyticsReport } from '@/lib/analytics/types';
+import { getPerformanceGradeInfo } from '@/lib/analytics/engine';
 import { syncSingleFormResponsesAction, getFormAnalyticsAction } from '@/app/admin/results/actions';
 import { useHydrated, formatDateTimeFull } from '@/lib/hooks/use-hydrated';
 import { downloadPdfFile } from '@/lib/utils/pdf-download';
@@ -108,15 +109,9 @@ export function FormResultsConsole({ initialReport }: Props) {
       ? report.facultyGrids[selectedGridIndex]
       : null;
 
-  const gradeInfo = (() => {
-    if (!currentReport.hasData) return { label: 'NO DATA', color: 'text-slate-400', bg: 'bg-slate-100', border: 'border-slate-300' };
-    const s = currentReport.compositeAverageScore || currentReport.averageOverallScore;
-    if (s >= 4.5) return { label: 'EXCELLENT', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-300' };
-    if (s >= 3.75) return { label: 'VERY GOOD', color: 'text-indigo-700', bg: 'bg-indigo-50', border: 'border-indigo-300' };
-    if (s >= 3.0) return { label: 'GOOD', color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-300' };
-    if (s >= 2.0) return { label: 'SATISFACTORY', color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-300' };
-    return { label: 'NEEDS ATTENTION', color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-300' };
-  })();
+  const gradeInfo =
+    currentReport.performanceGradeInfo ||
+    getPerformanceGradeInfo(currentReport.averageOverallScore, currentReport.hasData);
 
   // PDF download links
   const semesterOverviewPdfUrl = `/api/admin/results/${report.formId}/pdf?scope=SEMESTER`;
@@ -387,14 +382,14 @@ export function FormResultsConsole({ initialReport }: Props) {
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between text-slate-400">
             <span className="text-[11px] font-bold uppercase tracking-wider">
-              {isSemester && selectedGridIndex === -1 ? 'Semester Benchmark' : 'Average Rating'}
+              {isSemester && selectedGridIndex === -1 ? 'Semester Benchmark' : 'Overall Rating'}
             </span>
             <Award className="w-4 h-4 text-amber-500" />
           </div>
           <div className="text-2xl font-bold text-slate-900 mt-2">
             {currentReport.hasData ? (
               <>
-                {currentReport.compositeAverageScore.toFixed(2)}{' '}
+                {currentReport.averageOverallScore.toFixed(2)}{' '}
                 <span className="text-xs font-medium text-slate-400">/ 5.00</span>
               </>
             ) : (
@@ -403,7 +398,7 @@ export function FormResultsConsole({ initialReport }: Props) {
           </div>
           <p className="text-[11px] text-slate-500 mt-1">
             {currentReport.hasData
-              ? `Weighted score across 8 parameters`
+              ? `Parameter Average: ${(currentReport.parameterAverageScore ?? currentReport.compositeAverageScore).toFixed(2)} (Q1–Q7)`
               : 'Requires student responses'}
           </p>
         </div>
@@ -416,7 +411,7 @@ export function FormResultsConsole({ initialReport }: Props) {
           </div>
           <div className="mt-2">
             <span
-              className={`inline-block px-2.5 py-1 rounded-lg text-xs font-extrabold border ${gradeInfo.bg} ${gradeInfo.color} ${gradeInfo.border}`}
+              className={`inline-block px-2.5 py-1 rounded-lg text-xs font-extrabold border ${gradeInfo.bgColor} ${gradeInfo.color} ${gradeInfo.borderColor}`}
             >
               {gradeInfo.label}
             </span>
@@ -594,9 +589,20 @@ export function FormResultsConsole({ initialReport }: Props) {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <h4 className="font-bold text-xs text-slate-900">
-                        {p.parameterId}. {p.title}
-                      </h4>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-bold text-xs text-slate-900">
+                          {p.parameterId}. {p.title}
+                        </h4>
+                        {p.parameterId === 8 ? (
+                          <span className="px-1.5 py-0.5 text-[9px] font-bold bg-amber-100 text-amber-800 rounded">
+                            Overall Rating (Q8)
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 text-[9px] font-semibold bg-blue-50 text-blue-700 rounded">
+                            Evaluation Parameter
+                          </span>
+                        )}
+                      </div>
                       {p.description && (
                         <p className="text-[11px] text-slate-500 mt-0.5">{p.description}</p>
                       )}

@@ -159,14 +159,17 @@ export async function syncFormResponsesToSheet(params: {
         let sheetHeaders: string[] = [];
         let sheetDataRows: any[][] = [];
         try {
+          const meta = await sheets.spreadsheets.get({ spreadsheetId: resolvedSheetId });
+          const sheetTitle = meta.data.sheets?.[0]?.properties?.title || 'Form Responses';
           const sheetDataRes = await sheets.spreadsheets.values.get({
             spreadsheetId: resolvedSheetId,
-            range: "'Form Responses'!A1:ZZ",
+            range: `'${sheetTitle}'!A1:ZZ`,
           });
           const allSheetValues = sheetDataRes.data.values || [];
           sheetHeaders = (allSheetValues[0] || []).map(h => String(h || '').trim());
           sheetDataRows = allSheetValues.slice(1);
-        } catch {
+        } catch (sheetErr) {
+          console.warn('[Sync] Google Sheets API values get notice:', sheetErr);
           sheetHeaders = [];
           sheetDataRows = [];
         }
@@ -224,7 +227,7 @@ export async function syncFormResponsesToSheet(params: {
       }
     });
 
-    const totalResponses = allResponses.length;
+    const totalResponses = Math.max(allResponses.length, sheetDataRows.length);
 
     if (totalResponses === 0 && sheetDataRows.length === 0) {
       return {
@@ -372,9 +375,12 @@ export async function syncFormResponsesToSheet(params: {
             const nameIdx = lowerHeaders.findIndex(h => h.includes('student name') || (h.includes('name') && !h.includes('faculty') && !h.includes('subject')));
             const regIdx = lowerHeaders.findIndex(h => h.includes('registration') || h.includes('reg no'));
 
-            sheetDataRows.forEach(row => {
-              const rId = String((respIdIdx !== -1 ? row[respIdIdx] : '') || '').trim();
-              if (!rId) return;
+            sheetDataRows.forEach((row, rowIndex) => {
+              let rId = String((respIdIdx !== -1 ? row[respIdIdx] : '') || '').trim();
+              if (!rId) {
+                // For native Google Sheets linked to forms that don't have a dedicated "Response ID" column
+                rId = `row-${rowIndex + 2}`;
+              }
               if (!trackingMap.has(rId)) {
                 trackingMap.set(rId, {
                   responseId: rId,
@@ -408,10 +414,11 @@ export async function syncFormResponsesToSheet(params: {
             const studentName = item.studentName;
             const regNo = item.registrationNumber;
 
-            // Insert response record
+            // Insert response record with mandatory institutional tenant boundary (college_id)
             const { data: newRec, error: insertError } = await supabase
               .from('feedback_response_records')
               .insert({
+                college_id: collegeId,
                 form_id: formUuid,
                 google_response_id: responseId,
                 student_email: email,
