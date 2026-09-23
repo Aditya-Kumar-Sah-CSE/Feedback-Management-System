@@ -643,7 +643,7 @@ export async function provisionGoogleFormAndSheetAction(params: {
 
   if (!session.isPlatformSuperAdmin) {
     const isMember = session.colleges?.some(
-      (c: any) => c.id === targetCollegeId && c.membershipStatus === 'ACTIVE'
+      (c) => c.collegeId === targetCollegeId && c.status === 'ACTIVE'
     );
     if (!isMember) {
       return { success: false, error: 'Forbidden: You do not have permission to provision forms for this institution.' };
@@ -998,7 +998,7 @@ export async function syncFormResponsesAction(formId: string) {
   const targetCollegeId = form.college_id;
   if (!session.isPlatformSuperAdmin) {
     const isMember = session.colleges?.some(
-      (c: any) => c.id === targetCollegeId && c.membershipStatus === 'ACTIVE'
+      (c) => c.collegeId === targetCollegeId && c.status === 'ACTIVE'
     );
     if (!isMember) {
       return { success: false, error: 'Forbidden: You do not have permission to sync responses for this form.' };

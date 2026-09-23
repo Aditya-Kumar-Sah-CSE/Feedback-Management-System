@@ -113,7 +113,7 @@ export async function syncFormResponsesToSheet(params: {
 
     if (!session.isPlatformSuperAdmin) {
       const isAuthorizedMember = session.colleges?.some(
-        (c: any) => c.id === collegeId && c.membershipStatus === 'ACTIVE'
+        (c: any) => c.collegeId === collegeId && c.status === 'ACTIVE'
       );
       if (!isAuthorizedMember) {
         return {
