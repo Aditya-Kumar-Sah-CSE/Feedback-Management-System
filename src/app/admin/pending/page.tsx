@@ -34,7 +34,7 @@ export default function AdminPendingPage() {
       } else if (data.isRejected) {
         setStatusMessage('Your request has been reviewed and rejected by the administration.');
       } else {
-        setStatusMessage('Your request is still awaiting approval by the Super Admin.');
+        setStatusMessage('Your request is still awaiting approval by an authorized administrator.');
       }
     } catch {
       setStatusMessage('Unable to verify status at this moment.');

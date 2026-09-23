@@ -45,10 +45,15 @@ export function AdminManagementTab({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [admins, setAdmins] = useState<Admin[]>(adminsList);
+  const [requests, setRequests] = useState<AdminRequest[]>(adminRequests);
 
   useEffect(() => {
     setAdmins(adminsList);
   }, [adminsList]);
+
+  useEffect(() => {
+    setRequests(adminRequests);
+  }, [adminRequests]);
 
   const [activeAction, setActiveAction] = useState<{
     id: string;
@@ -63,8 +68,8 @@ export function AdminManagementTab({
   const [demotingAdmin, setDemotingAdmin] = useState<Admin | null>(null);
   const [revokeReason, setRevokeReason] = useState<string>('');
 
-  const pendingRequests = adminRequests.filter((r) => r.status === 'PENDING');
-  const pastRequests = adminRequests.filter((r) => r.status !== 'PENDING');
+  const pendingRequests = requests.filter((r) => r.status === 'PENDING');
+  const pastRequests = requests.filter((r) => r.status !== 'PENDING');
 
   const confirmPromoteAdmin = () => {
     if (!promotingAdmin) return;
@@ -159,10 +164,40 @@ export function AdminManagementTab({
       try {
         const res = await approveAdminRequestAction(requestId);
         if (res.success) {
+          const approvedReq = requests.find((r) => r.id === requestId);
+          setRequests((prev) =>
+            prev.map((r) => (r.id === requestId ? { ...r, status: 'APPROVED' } : r))
+          );
+          if (approvedReq) {
+            setAdmins((prev) => {
+              const exists = prev.some((a) => a.email.toLowerCase() === approvedReq.email.toLowerCase());
+              if (exists) return prev;
+              return [
+                ...prev,
+                {
+                  id: approvedReq.id,
+                  user_id: approvedReq.user_id || approvedReq.id,
+                  email: approvedReq.email,
+                  name: approvedReq.name,
+                  role: 'ADMIN',
+                  status: 'ACTIVE',
+                  created_at: new Date().toISOString(),
+                  college_id: approvedReq.college_id,
+                  college: approvedReq.college,
+                } as Admin,
+              ];
+            });
+          }
           setMessage({ type: 'success', text: 'Admin request approved successfully.' });
+          router.refresh();
         } else {
           setMessage({ type: 'error', text: res.error || 'Failed to approve request.' });
         }
+      } catch (err: any) {
+        setMessage({
+          type: 'error',
+          text: err.message || 'An unexpected error occurred during approval.',
+        });
       } finally {
         setActiveAction(null);
       }
@@ -177,10 +212,19 @@ export function AdminManagementTab({
       try {
         const res = await rejectAdminRequestAction(requestId);
         if (res.success) {
+          setRequests((prev) =>
+            prev.map((r) => (r.id === requestId ? { ...r, status: 'REJECTED' } : r))
+          );
           setMessage({ type: 'success', text: 'Admin request rejected.' });
+          router.refresh();
         } else {
           setMessage({ type: 'error', text: res.error || 'Failed to reject request.' });
         }
+      } catch (err: any) {
+        setMessage({
+          type: 'error',
+          text: err.message || 'An unexpected error occurred during rejection.',
+        });
       } finally {
         setActiveAction(null);
       }
@@ -253,9 +297,9 @@ export function AdminManagementTab({
         </div>
 
         {!isSuperAdmin && (
-          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center gap-2">
-            <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
-            <span>Read-only: Super Admin permissions required to approve or modify admins.</span>
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0" />
+            <span>Institution Administrator: You can review and approve pending admin requests for your institution. Super Admin privileges are required to promote or demote administrators.</span>
           </div>
         )}
       </div>
@@ -320,28 +364,26 @@ export function AdminManagementTab({
                     <div className="text-[11px] text-slate-400">
                       Requested: {formatDateShort(req.created_at, hydrated)} at {formatTime(req.created_at, hydrated)}
                     </div>
-                    {isSuperAdmin && (
-                      <div className="flex items-center gap-2 pt-1">
-                        <button
-                          onClick={() => handleApprove(req.id)}
-                          disabled={isPending}
-                          aria-busy={isApproving}
-                          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition-colors disabled:opacity-50 min-h-[40px]"
-                        >
-                          {isApproving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                          <span>{isApproving ? 'Approving...' : 'Approve'}</span>
-                        </button>
-                        <button
-                          onClick={() => handleReject(req.id)}
-                          disabled={isPending}
-                          aria-busy={isRejecting}
-                          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs transition-colors disabled:opacity-50 min-h-[40px]"
-                        >
-                          {isRejecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
-                          <span>{isRejecting ? 'Rejecting...' : 'Reject'}</span>
-                        </button>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        onClick={() => handleApprove(req.id)}
+                        disabled={isPending}
+                        aria-busy={isApproving}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition-colors disabled:opacity-50 min-h-[40px] cursor-pointer"
+                      >
+                        {isApproving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                        <span>{isApproving ? 'Approving...' : 'Approve'}</span>
+                      </button>
+                      <button
+                        onClick={() => handleReject(req.id)}
+                        disabled={isPending}
+                        aria-busy={isRejecting}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs transition-colors disabled:opacity-50 min-h-[40px] cursor-pointer"
+                      >
+                        {isRejecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                        <span>{isRejecting ? 'Rejecting...' : 'Reject'}</span>
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -400,39 +442,33 @@ export function AdminManagementTab({
                           </span>
                         </td>
                         <td className="px-5 py-3.5 text-right space-x-2">
-                          {isSuperAdmin ? (
-                            <>
-                              <button
-                                onClick={() => handleApprove(req.id)}
-                                disabled={isPending}
-                                aria-busy={isApproving}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-colors disabled:opacity-50"
-                              >
-                                {isApproving ? (
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                ) : (
-                                  <Check className="w-3.5 h-3.5" />
-                                )}
-                                <span>{isApproving ? 'Approving...' : 'Approve'}</span>
-                              </button>
+                          <button
+                            onClick={() => handleApprove(req.id)}
+                            disabled={isPending}
+                            aria-busy={isApproving}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+                          >
+                            {isApproving ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Check className="w-3.5 h-3.5" />
+                            )}
+                            <span>{isApproving ? 'Approving...' : 'Approve'}</span>
+                          </button>
 
-                              <button
-                                onClick={() => handleReject(req.id)}
-                                disabled={isPending}
-                                aria-busy={isRejecting}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold transition-colors disabled:opacity-50"
-                              >
-                                {isRejecting ? (
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                ) : (
-                                  <X className="w-3.5 h-3.5" />
-                                )}
-                                <span>{isRejecting ? 'Rejecting...' : 'Reject'}</span>
-                              </button>
-                            </>
-                          ) : (
-                            <span className="text-slate-400 italic text-[11px]">Approval restricted</span>
-                          )}
+                          <button
+                            onClick={() => handleReject(req.id)}
+                            disabled={isPending}
+                            aria-busy={isRejecting}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+                          >
+                            {isRejecting ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <X className="w-3.5 h-3.5" />
+                            )}
+                            <span>{isRejecting ? 'Rejecting...' : 'Reject'}</span>
+                          </button>
                         </td>
                       </tr>
                     );

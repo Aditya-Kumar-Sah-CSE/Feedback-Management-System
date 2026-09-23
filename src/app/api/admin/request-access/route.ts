@@ -139,7 +139,7 @@ export async function POST(request: Request) {
           success: true,
           status: 'PENDING',
           alreadyPending: true,
-          message: 'An access request for this institution is already pending approval from the Super Admin.',
+          message: 'An access request for this institution is already pending approval from an administrator.',
         });
       }
 
