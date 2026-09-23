@@ -1,11 +1,14 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useEffect, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   approveAdminRequestAction,
   rejectAdminRequestAction,
   revokeAdminAccessAction,
   reactivateAdminAccessAction,
+  promoteAdminToSuperAdminAction,
+  demoteSuperAdminToAdminAction,
 } from '@/app/admin/actions';
 import {
   ShieldAlert,
@@ -18,9 +21,12 @@ import {
   AlertCircle,
   Loader2,
   Building2,
+  ShieldPlus,
+  Sparkles,
 } from 'lucide-react';
 import type { Admin, AdminRequest } from '@/types/database';
 import { useHydrated, formatDateShort, formatTime } from '@/lib/hooks/use-hydrated';
+import { isPrimarySuperAdmin } from '@/lib/auth/admin-auth';
 
 interface Props {
   adminRequests: AdminRequest[];
@@ -36,20 +42,115 @@ export function AdminManagementTab({
   currentUserEmail,
 }: Props) {
   const hydrated = useHydrated();
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [admins, setAdmins] = useState<Admin[]>(adminsList);
+
+  useEffect(() => {
+    setAdmins(adminsList);
+  }, [adminsList]);
+
   const [activeAction, setActiveAction] = useState<{
     id: string;
-    type: 'APPROVE' | 'REJECT' | 'REVOKE' | 'REACTIVATE';
+    type: 'APPROVE' | 'REJECT' | 'REVOKE' | 'REACTIVATE' | 'PROMOTE' | 'DEMOTE';
   } | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Modals for deliberate Super Admin confirmation
   const [revokingAdmin, setRevokingAdmin] = useState<Admin | null>(null);
   const [reactivatingAdmin, setReactivatingAdmin] = useState<Admin | null>(null);
+  const [promotingAdmin, setPromotingAdmin] = useState<Admin | null>(null);
+  const [demotingAdmin, setDemotingAdmin] = useState<Admin | null>(null);
   const [revokeReason, setRevokeReason] = useState<string>('');
 
   const pendingRequests = adminRequests.filter((r) => r.status === 'PENDING');
   const pastRequests = adminRequests.filter((r) => r.status !== 'PENDING');
+
+  const confirmPromoteAdmin = () => {
+    if (!promotingAdmin) return;
+    const targetId = promotingAdmin.user_id || promotingAdmin.id;
+    const email = promotingAdmin.email;
+    const name = promotingAdmin.name;
+    setActiveAction({ id: promotingAdmin.id, type: 'PROMOTE' });
+    setMessage(null);
+
+    startTransition(async () => {
+      try {
+        const res = await promoteAdminToSuperAdminAction(targetId);
+        if (res.success) {
+          // Immediately update local state without requiring manual refresh
+          setAdmins((prev) =>
+            prev.map((a) =>
+              a.id === promotingAdmin.id || a.user_id === targetId
+                ? { ...a, role: 'SUPER_ADMIN' }
+                : a
+            )
+          );
+          setMessage({
+            type: 'success',
+            text: `Successfully promoted ${name} (${email}) to Platform Super Admin.`,
+          });
+          router.refresh();
+        } else {
+          setMessage({
+            type: 'error',
+            text: res.error || 'Failed to promote administrator to Super Admin.',
+          });
+        }
+      } catch (err: any) {
+        setMessage({
+          type: 'error',
+          text: err.message || 'An unexpected error occurred during promotion.',
+        });
+      } finally {
+        setActiveAction(null);
+        setPromotingAdmin(null);
+      }
+    });
+  };
+
+  const confirmDemoteAdmin = () => {
+    if (!demotingAdmin) return;
+    const targetId = demotingAdmin.user_id || demotingAdmin.id;
+    const email = demotingAdmin.email;
+    const name = demotingAdmin.name;
+    setActiveAction({ id: demotingAdmin.id, type: 'DEMOTE' });
+    setMessage(null);
+
+    startTransition(async () => {
+      try {
+        const res = await demoteSuperAdminToAdminAction(targetId);
+        if (res.success) {
+          // Immediately update local state without requiring manual refresh
+          setAdmins((prev) =>
+            prev.map((a) =>
+              a.id === demotingAdmin.id || a.user_id === targetId
+                ? { ...a, role: 'ADMIN' }
+                : a
+            )
+          );
+          setMessage({
+            type: 'success',
+            text: `Super Admin privileges removed for ${name} (${email}). Reverted to Admin.`,
+          });
+          router.refresh();
+        } else {
+          setMessage({
+            type: 'error',
+            text: res.error || 'Failed to demote administrator.',
+          });
+        }
+      } catch (err: any) {
+        setMessage({
+          type: 'error',
+          text: err.message || 'An unexpected error occurred during demotion.',
+        });
+      } finally {
+        setActiveAction(null);
+        setDemotingAdmin(null);
+      }
+    });
+  };
 
   const handleApprove = (requestId: string) => {
     setActiveAction({ id: requestId, type: 'APPROVE' });
@@ -349,7 +450,7 @@ export function AdminManagementTab({
           <div className="flex items-center gap-2 min-w-0">
             <UserCheck className="w-4 h-4 text-bce-cobalt shrink-0" />
             <h4 className="text-sm font-bold text-slate-900 truncate">
-              Authorized Administrators ({adminsList.length})
+              Authorized Administrators ({admins.length})
             </h4>
           </div>
           <span className="text-xs text-slate-400 shrink-0">
@@ -357,7 +458,7 @@ export function AdminManagementTab({
           </span>
         </div>
 
-        {adminsList.length === 0 ? (
+        {admins.length === 0 ? (
           <div className="p-8 text-center text-xs text-slate-400">
             No administrator accounts configured yet.
           </div>
@@ -365,9 +466,9 @@ export function AdminManagementTab({
           <>
             {/* Mobile Cards View */}
             <div className="md:hidden divide-y divide-slate-100 min-w-0">
-              {adminsList.map((admin) => {
+              {admins.map((admin) => {
                 const isOperating = isPending && activeAction?.id === admin.id;
-                const isPrimarySuperAdmin = admin.email.toLowerCase() === 'iambestadi@gmail.com';
+                const isPrimary = isPrimarySuperAdmin({ email: admin.email, user_id: admin.user_id, id: admin.id });
                 const isSelf = admin.email.toLowerCase() === currentUserEmail.toLowerCase();
 
                 return (
@@ -422,34 +523,79 @@ export function AdminManagementTab({
                       </div>
                     ) : null}
 
-                    <div className="flex items-center justify-between gap-2 pt-1">
+                    <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
                       <span className="text-[11px] text-slate-400">
                         Added: {formatDateShort(admin.created_at, hydrated)}
                       </span>
 
-                      {isSuperAdmin && !isPrimarySuperAdmin && !isSelf && admin.role === 'ADMIN' && (
-                        admin.status === 'ACTIVE' ? (
+                      {isSuperAdmin && (
+                        isPrimary ? (
+                          <span className="text-[10px] text-amber-800 font-semibold bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded italic">
+                            Primary Super Admin
+                          </span>
+                        ) : isSelf ? (
+                          <span className="text-[10px] text-slate-400 italic">Current Session</span>
+                        ) : admin.role === 'ADMIN' ? (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {admin.status === 'ACTIVE' && (
+                              <button
+                                onClick={() => setPromotingAdmin(admin)}
+                                disabled={isOperating}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300/80 shadow-2xs min-h-[36px] cursor-pointer"
+                              >
+                                {isOperating && activeAction?.type === 'PROMOTE' ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <ShieldPlus className="w-3.5 h-3.5 text-amber-600" />
+                                )}
+                                <span>↑ Make Super Admin</span>
+                              </button>
+                            )}
+                            {admin.status === 'ACTIVE' ? (
+                              <button
+                                onClick={() => {
+                                  setRevokingAdmin(admin);
+                                  setRevokeReason('');
+                                }}
+                                disabled={isOperating}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 min-h-[36px] cursor-pointer"
+                              >
+                                {isOperating && activeAction?.type === 'REVOKE' ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <UserX className="w-3.5 h-3.5 text-rose-600" />
+                                )}
+                                <span>Revoke Access</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => setReactivatingAdmin(admin)}
+                                disabled={isOperating}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 min-h-[36px] cursor-pointer"
+                              >
+                                {isOperating && activeAction?.type === 'REACTIVATE' ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                )}
+                                <span>Reactivate</span>
+                              </button>
+                            )}
+                          </div>
+                        ) : admin.role === 'SUPER_ADMIN' ? (
                           <button
-                            onClick={() => {
-                              setRevokingAdmin(admin);
-                              setRevokeReason('');
-                            }}
+                            onClick={() => setDemotingAdmin(admin)}
                             disabled={isOperating}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 min-h-[36px]"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-50/80 hover:bg-rose-50 text-slate-700 hover:text-rose-700 border border-slate-300 hover:border-rose-300 min-h-[36px] cursor-pointer"
                           >
-                            {isOperating ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserX className="w-3 h-3" />}
-                            <span>Revoke Access</span>
+                            {isOperating && activeAction?.type === 'DEMOTE' ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <ShieldAlert className="w-3.5 h-3.5 text-amber-600 hover:text-rose-600" />
+                            )}
+                            <span>↓ Demote to Admin</span>
                           </button>
-                        ) : (
-                          <button
-                            onClick={() => setReactivatingAdmin(admin)}
-                            disabled={isOperating}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 min-h-[36px]"
-                          >
-                            {isOperating ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserCheck className="w-3 h-3" />}
-                            <span>Reactivate</span>
-                          </button>
-                        )
+                        ) : null
                       )}
                     </div>
                   </div>
@@ -472,9 +618,9 @@ export function AdminManagementTab({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {adminsList.map((admin) => {
+                  {admins.map((admin) => {
                     const isOperating = isPending && activeAction?.id === admin.id;
-                    const isPrimarySuperAdmin = admin.email.toLowerCase() === 'iambestadi@gmail.com';
+                    const isPrimary = isPrimarySuperAdmin({ email: admin.email, user_id: admin.user_id, id: admin.id });
                     const isSelf = admin.email.toLowerCase() === currentUserEmail.toLowerCase();
 
                     return (
@@ -538,41 +684,74 @@ export function AdminManagementTab({
                         </td>
                         <td className="px-5 py-3.5 text-right">
                           {isSuperAdmin ? (
-                            isPrimarySuperAdmin ? (
-                              <span className="text-[11px] text-slate-400 italic">Primary Super Admin</span>
+                            isPrimary ? (
+                              <span className="inline-flex items-center text-[11px] text-amber-800 font-semibold bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-md italic">
+                                Primary Super Admin
+                              </span>
                             ) : isSelf ? (
                               <span className="text-[11px] text-slate-400 italic">Current Session</span>
                             ) : admin.role === 'ADMIN' ? (
-                              admin.status === 'ACTIVE' ? (
-                                <button
-                                  onClick={() => {
-                                    setRevokingAdmin(admin);
-                                    setRevokeReason('');
-                                  }}
-                                  disabled={isOperating}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 shadow-2xs hover:shadow-xs disabled:opacity-50 cursor-pointer"
-                                >
-                                  {isOperating ? (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                  ) : (
-                                    <UserX className="w-3.5 h-3.5 text-rose-600" />
-                                  )}
-                                  <span>Revoke Access</span>
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => setReactivatingAdmin(admin)}
-                                  disabled={isOperating}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 shadow-2xs hover:shadow-xs disabled:opacity-50 cursor-pointer"
-                                >
-                                  {isOperating ? (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                  ) : (
-                                    <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
-                                  )}
-                                  <span>Reactivate</span>
-                                </button>
-                              )
+                              <div className="inline-flex items-center justify-end gap-1.5 flex-wrap">
+                                {admin.status === 'ACTIVE' && (
+                                  <button
+                                    onClick={() => setPromotingAdmin(admin)}
+                                    disabled={isOperating}
+                                    title="Promote to Super Admin"
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300/80 shadow-2xs hover:shadow-xs disabled:opacity-50 cursor-pointer"
+                                  >
+                                    {isOperating && activeAction?.type === 'PROMOTE' ? (
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                      <ShieldPlus className="w-3.5 h-3.5 text-amber-600" />
+                                    )}
+                                    <span>↑ Make Super Admin</span>
+                                  </button>
+                                )}
+                                {admin.status === 'ACTIVE' ? (
+                                  <button
+                                    onClick={() => {
+                                      setRevokingAdmin(admin);
+                                      setRevokeReason('');
+                                    }}
+                                    disabled={isOperating}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 shadow-2xs hover:shadow-xs disabled:opacity-50 cursor-pointer"
+                                  >
+                                    {isOperating && activeAction?.type === 'REVOKE' ? (
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                      <UserX className="w-3.5 h-3.5 text-rose-600" />
+                                    )}
+                                    <span>Revoke Access</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => setReactivatingAdmin(admin)}
+                                    disabled={isOperating}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 shadow-2xs hover:shadow-xs disabled:opacity-50 cursor-pointer"
+                                  >
+                                    {isOperating && activeAction?.type === 'REACTIVATE' ? (
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                      <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                    )}
+                                    <span>Reactivate</span>
+                                  </button>
+                                )}
+                              </div>
+                            ) : admin.role === 'SUPER_ADMIN' ? (
+                              <button
+                                onClick={() => setDemotingAdmin(admin)}
+                                disabled={isOperating}
+                                title="Demote Super Admin to standard Admin"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all bg-amber-50/80 hover:bg-rose-50 text-slate-700 hover:text-rose-700 border border-slate-300 hover:border-rose-300 shadow-2xs hover:shadow-xs disabled:opacity-50 cursor-pointer"
+                              >
+                                {isOperating && activeAction?.type === 'DEMOTE' ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <ShieldAlert className="w-3.5 h-3.5 text-amber-600 hover:text-rose-600" />
+                                )}
+                                <span>↓ Demote to Admin</span>
+                              </button>
                             ) : null
                           ) : (
                             <span className="text-slate-400 italic text-[11px]">Restricted</span>
@@ -809,6 +988,168 @@ export function AdminManagementTab({
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Dialog: Promote to Super Admin */}
+      {promotingAdmin && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 border border-amber-200 text-amber-700 flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-5 h-5 text-amber-600" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-base font-bold text-slate-900">
+                  Promote to Super Admin?
+                </h4>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  This will grant full platform-wide administrative privileges across all institutions, Google Workspace integrations, billing, and administrator management.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Administrator:</span>
+                <span className="font-semibold text-slate-800">{promotingAdmin.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Email:</span>
+                <span className="font-mono text-slate-700">{promotingAdmin.email}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Canonical Auth ID:</span>
+                <span className="font-mono text-[10px] text-slate-600 truncate max-w-[200px]" title={promotingAdmin.user_id || promotingAdmin.id}>
+                  {promotingAdmin.user_id || promotingAdmin.id}
+                </span>
+              </div>
+              <div className="flex justify-between items-center pt-1 border-t border-slate-200/60">
+                <span className="text-slate-500">New Role:</span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+                  <ShieldCheck className="w-3 h-3" /> SUPER ADMIN
+                </span>
+              </div>
+            </div>
+
+            <div className="p-2.5 bg-amber-50/70 rounded-xl border border-amber-200/60 text-[11px] text-amber-800 flex items-start gap-2">
+              <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <span>
+                Promotions are cryptographically validated against the administrator&apos;s authentication record and immutably recorded in the platform audit log.
+              </span>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setPromotingAdmin(null)}
+                disabled={isPending}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmPromoteAdmin}
+                disabled={isPending}
+                aria-busy={isPending && activeAction?.type === 'PROMOTE'}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-amber-950 bg-amber-400 hover:bg-amber-300 border border-amber-500/30 transition-all shadow-sm cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {isPending && activeAction?.type === 'PROMOTE' ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Promoting...</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldPlus className="w-3.5 h-3.5 text-amber-800" />
+                    <span>Confirm Promotion</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Dialog: Demote Super Admin to Standard Admin */}
+      {demotingAdmin && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0">
+                <ShieldAlert className="w-5 h-5 text-rose-600" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-base font-bold text-slate-900">
+                  Demote Super Admin to Admin?
+                </h4>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  This will revoke Platform Super Administrator privileges from this account. They will revert to standard institution-level administrator permissions.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Administrator:</span>
+                <span className="font-semibold text-slate-800">{demotingAdmin.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Email:</span>
+                <span className="font-mono text-slate-700">{demotingAdmin.email}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Canonical Auth ID:</span>
+                <span className="font-mono text-[10px] text-slate-600 truncate max-w-[200px]" title={demotingAdmin.user_id || demotingAdmin.id}>
+                  {demotingAdmin.user_id || demotingAdmin.id}
+                </span>
+              </div>
+              <div className="flex justify-between items-center pt-1 border-t border-slate-200/60">
+                <span className="text-slate-500">Resulting Role:</span>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-800">
+                  ADMIN
+                </span>
+              </div>
+            </div>
+
+            <div className="p-2.5 bg-rose-50/70 rounded-xl border border-rose-200/60 text-[11px] text-rose-800 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <span>
+                Safety safeguards strictly prevent demoting the Primary Super Admin, self-demoting your current session, or removing the last active Super Admin.
+              </span>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setDemotingAdmin(null)}
+                disabled={isPending}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDemoteAdmin}
+                disabled={isPending}
+                aria-busy={isPending && activeAction?.type === 'DEMOTE'}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 transition-colors shadow-sm cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {isPending && activeAction?.type === 'DEMOTE' ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Demoting...</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldAlert className="w-3.5 h-3.5" />
+                    <span>Confirm Demotion</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

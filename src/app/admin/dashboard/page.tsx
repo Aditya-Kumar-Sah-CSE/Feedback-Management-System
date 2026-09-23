@@ -101,10 +101,21 @@ export default async function AdminDashboardPage() {
     const { data: usersData } = await adminDb.auth.admin.listUsers();
     const userMap = new Map((usersData?.users || []).map((u: any) => [u.id, u]));
 
-    // 1. Resolve college membership admins
+    // 1. Fetch active platform admins to identify all current Super Admins
+    const { data: platformAdmins } = await adminDb
+      .from('platform_admins')
+      .select('id, user_id, role, is_active, created_at')
+      .eq('is_active', true);
+
+    const activePlatformAdminMap = new Map(
+      (platformAdmins || []).map((pa: any) => [pa.user_id, pa])
+    );
+
+    // 2. Resolve college membership admins
     if (adminsList && adminsList.length > 0) {
       resolvedAdminsList = adminsList.map((m: any) => {
         const u = userMap.get(m.user_id);
+        const isSuper = activePlatformAdminMap.has(m.user_id);
         return {
           id: m.id,
           user_id: m.user_id,
@@ -112,19 +123,14 @@ export default async function AdminDashboardPage() {
           college: m.colleges || null,
           email: u?.email || 'admin@college.local',
           name: (u?.user_metadata?.name as string) || (u?.email ? u.email.split('@')[0] : 'Administrator'),
-          role: m.role as any,
+          role: (isSuper ? 'SUPER_ADMIN' : 'ADMIN') as any,
           status: m.status as any,
           created_at: m.created_at,
         };
       });
     }
 
-    // 2. Always inject Platform Super Admins so they appear in every college view
-    const { data: platformAdmins } = await adminDb
-      .from('platform_admins')
-      .select('id, user_id, role, is_active, created_at')
-      .eq('is_active', true);
-
+    // 3. Always inject Platform Super Admins who don't have a direct membership record for this college
     if (platformAdmins && platformAdmins.length > 0) {
       const existingUserIds = new Set(resolvedAdminsList.map((a) => a.user_id));
       for (const pa of platformAdmins) {
@@ -152,7 +158,7 @@ export default async function AdminDashboardPage() {
       college: m.colleges || null,
       email: 'admin@college.local',
       name: 'Administrator',
-      role: m.role as any,
+      role: 'ADMIN' as any,
       status: m.status as any,
       created_at: m.created_at,
     }));

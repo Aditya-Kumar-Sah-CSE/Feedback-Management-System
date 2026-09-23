@@ -3,7 +3,12 @@
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAdminSession, resolveAuthorizedCollegeId } from '@/lib/auth/admin-auth';
+import {
+  getAdminSession,
+  resolveAuthorizedCollegeId,
+  requireSuperAdmin,
+  isPrimarySuperAdmin,
+} from '@/lib/auth/admin-auth';
 import { ACADEMIC_CACHE_TAG } from '@/lib/supabase/academic-cache';
 import { branchSchema, isValidUUID } from '@/lib/validation';
 import { deleteFeedbackFormAction as deleteFormInternal } from './forms/actions';
@@ -210,10 +215,255 @@ export async function rejectAdminRequestAction(requestId: string) {
   return { success: false, error: 'Administrator request not found.' };
 }
 
+/**
+ * Securely promotes an administrator from ADMIN to PLATFORM_SUPER_ADMIN.
+ * Strictly verified on the backend against canonical auth.users.id.
+ */
+export async function promoteAdminToSuperAdminAction(targetAdminId: string) {
+  let session;
+  try {
+    session = await requireSuperAdmin();
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err.message || 'Unauthorized: Only an active Super Admin can promote administrators.',
+    };
+  }
+
+  if (!targetAdminId || typeof targetAdminId !== 'string') {
+    return { success: false, error: 'Invalid target administrator identifier.' };
+  }
+
+  const supabase = await getAdminDb();
+
+  // 1. Resolve canonical target user from auth.users (handling targetAdminId as membership ID or user_id)
+  let targetUserId = targetAdminId;
+  let targetUserEmail = '';
+  let targetUserName = '';
+
+  const { data: member } = await supabase
+    .from('college_memberships')
+    .select('id, user_id, status')
+    .or(`id.eq.${targetAdminId},user_id.eq.${targetAdminId}`)
+    .maybeSingle();
+
+  if (member?.user_id) {
+    targetUserId = member.user_id;
+  }
+
+  // Fetch target user directly from Supabase Auth admin API to ensure canonical existence
+  try {
+    const { data: userData, error: userErr } = await supabase.auth.admin.getUserById(targetUserId);
+    if (userErr || !userData?.user) {
+      return { success: false, error: 'Target administrator account not found in authentication system.' };
+    }
+    targetUserEmail = (userData.user.email || '').toLowerCase().trim();
+    targetUserName =
+      userData.user.user_metadata?.name || targetUserEmail.split('@')[0] || 'Administrator';
+  } catch (authErr: any) {
+    return { success: false, error: authErr.message || 'Failed to resolve administrator identity.' };
+  }
+
+  // 2. Check if user is already an active Platform Super Admin
+  const { data: existingPlatformAdmin } = await supabase
+    .from('platform_admins')
+    .select('id, role, is_active')
+    .eq('user_id', targetUserId)
+    .maybeSingle();
+
+  if (existingPlatformAdmin && existingPlatformAdmin.is_active) {
+    return { success: false, error: `${targetUserEmail} is already an active Super Admin.` };
+  }
+
+  // 3. Upsert into public.platform_admins using canonical auth.users.id
+  const { error: upsertErr } = await supabase
+    .from('platform_admins')
+    .upsert(
+      {
+        user_id: targetUserId,
+        email: targetUserEmail,
+        name: targetUserName,
+        role: 'PLATFORM_SUPER_ADMIN',
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id' }
+    );
+
+  if (upsertErr) {
+    console.error('[PROMOTE_SUPER_ADMIN_ERROR]', upsertErr);
+    return { success: false, error: upsertErr.message || 'Failed to promote administrator to Super Admin.' };
+  }
+
+  // 4. Record immutable audit log
+  await logAuditAction(
+    supabase,
+    { adminId: session.userId, email: session.email },
+    'ADMIN_PROMOTED_TO_SUPER_ADMIN',
+    'platform_admins',
+    targetUserId,
+    `Promoted administrator ${targetUserEmail} (ID: ${targetUserId}) to Super Admin by ${session.email}`
+  );
+
+  // 5. Invalidate caches and revalidate admin dashboard path
+  try {
+    revalidateTag(ACADEMIC_CACHE_TAG);
+  } catch {
+    // Non-fatal if outside tag context
+  }
+  revalidatePath('/admin/dashboard');
+
+  return {
+    success: true,
+    user: {
+      id: targetUserId,
+      email: targetUserEmail,
+      name: targetUserName,
+      role: 'SUPER_ADMIN',
+    },
+  };
+}
+
+/**
+ * Securely demotes a Super Admin back to standard administrator role.
+ * Includes safety invariants:
+ * - Cannot demote Primary Super Admin.
+ * - Cannot demote self (accidental lock-out protection).
+ * - Cannot demote the last remaining active Super Admin.
+ */
+export async function demoteSuperAdminToAdminAction(targetAdminId: string) {
+  let session;
+  try {
+    session = await requireSuperAdmin();
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err.message || 'Unauthorized: Only an active Super Admin can demote administrators.',
+    };
+  }
+
+  if (!targetAdminId || typeof targetAdminId !== 'string') {
+    return { success: false, error: 'Invalid target administrator identifier.' };
+  }
+
+  const supabase = await getAdminDb();
+
+  // 1. Resolve canonical target user (handling targetAdminId as platform_admins.id, membership.id, or user_id)
+  let targetUserId = targetAdminId;
+  let targetUserEmail = '';
+
+  const { data: paRecord } = await supabase
+    .from('platform_admins')
+    .select('id, user_id, email, is_active')
+    .or(`id.eq.${targetAdminId},user_id.eq.${targetAdminId}`)
+    .maybeSingle();
+
+  if (paRecord?.user_id) {
+    targetUserId = paRecord.user_id;
+    targetUserEmail = paRecord.email;
+  } else {
+    const { data: member } = await supabase
+      .from('college_memberships')
+      .select('id, user_id')
+      .or(`id.eq.${targetAdminId},user_id.eq.${targetAdminId}`)
+      .maybeSingle();
+
+    if (member?.user_id) {
+      targetUserId = member.user_id;
+    }
+  }
+
+  // Fetch email from auth.users if not resolved yet
+  try {
+    const { data: userData } = await supabase.auth.admin.getUserById(targetUserId);
+    if (userData?.user?.email) {
+      targetUserEmail = userData.user.email.toLowerCase().trim();
+    }
+  } catch {
+    // Non-fatal
+  }
+
+  if (!targetUserEmail) {
+    return { success: false, error: 'Target administrator account not found.' };
+  }
+
+  // 2. Protect Primary Super Admin
+  if (isPrimarySuperAdmin({ email: targetUserEmail, user_id: targetUserId })) {
+    return {
+      success: false,
+      error: 'Forbidden: The Primary Super Admin cannot be demoted under any circumstance.',
+    };
+  }
+
+  // 3. Prevent accidental self-demotion
+  if (targetUserId === session.userId) {
+    return {
+      success: false,
+      error: 'Forbidden: You cannot demote your own Super Admin account. Another Super Admin must perform this action.',
+    };
+  }
+
+  // 4. Prevent demoting the last active Super Admin
+  const { count: activeCount, error: countErr } = await supabase
+    .from('platform_admins')
+    .select('id', { count: 'exact', head: true })
+    .eq('is_active', true);
+
+  if (countErr) {
+    return { success: false, error: 'Failed to verify active administrator counts.' };
+  }
+
+  if ((activeCount ?? 0) <= 1) {
+    return {
+      success: false,
+      error: 'Forbidden: Cannot demote the last remaining active Super Admin on the platform.',
+    };
+  }
+
+  // 5. Update platform_admins: set is_active = false
+  const { error: demoteErr } = await supabase
+    .from('platform_admins')
+    .update({
+      is_active: false,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('user_id', targetUserId);
+
+  if (demoteErr) {
+    console.error('[DEMOTE_SUPER_ADMIN_ERROR]', demoteErr);
+    return { success: false, error: demoteErr.message || 'Failed to demote administrator.' };
+  }
+
+  // 6. Record immutable audit log
+  await logAuditAction(
+    supabase,
+    { adminId: session.userId, email: session.email },
+    'SUPER_ADMIN_DEMOTED_TO_ADMIN',
+    'platform_admins',
+    targetUserId,
+    `Demoted Super Admin ${targetUserEmail} (ID: ${targetUserId}) to standard Admin by ${session.email}`
+  );
+
+  // 7. Revalidate
+  try {
+    revalidateTag(ACADEMIC_CACHE_TAG);
+  } catch {
+    // Non-fatal
+  }
+  revalidatePath('/admin/dashboard');
+
+  return { success: true };
+}
+
 export async function revokeAdminAccessAction(targetAdminId: string, reason?: string) {
-  const session = await getAdminSession();
-  if (!session.isAuthenticated || !session.isSuperAdmin || !session.isActive) {
-    return { success: false, error: 'Unauthorized: Only an active Super Admin can revoke administrator access.' };
+  let session;
+  try {
+    session = await requireSuperAdmin();
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err.message || 'Unauthorized: Only an active Super Admin can revoke administrator access.',
+    };
   }
 
   const supabase = await getAdminDb();
@@ -231,6 +481,26 @@ export async function revokeAdminAccessAction(targetAdminId: string, reason?: st
   // Prevent self-revocation
   if (member.user_id === session.userId) {
     return { success: false, error: 'Administrators cannot revoke their own account.' };
+  }
+
+  // Protect Primary Super Admin
+  if (isPrimarySuperAdmin({ user_id: member.user_id })) {
+    return { success: false, error: 'Forbidden: The Primary Super Admin cannot be revoked under any circumstance.' };
+  }
+
+  // Prevent revoking if user has active Super Admin privileges (must demote first)
+  const { data: activePA } = await supabase
+    .from('platform_admins')
+    .select('id')
+    .eq('user_id', member.user_id)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (activePA) {
+    return {
+      success: false,
+      error: 'Forbidden: This administrator has active Super Admin privileges. Demote them from Super Admin before revoking membership access.',
+    };
   }
 
   if (member.status === 'INACTIVE') {

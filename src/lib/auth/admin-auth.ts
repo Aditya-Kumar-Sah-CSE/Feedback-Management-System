@@ -19,6 +19,58 @@ export type AdminAuthResult = AdminSession;
 export const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'iambestadi@gmail.com')
   .toLowerCase()
   .trim();
+export const PRIMARY_SUPER_ADMIN_EMAIL = 'iambestadi@gmail.com';
+export const PRIMARY_SUPER_ADMIN_ID = 'e606b509-7864-4150-8666-a6e47a63abc4';
+
+/**
+ * Centralized helper: checks if a session, admin object, or role represents a Super Admin.
+ */
+export function isSuperAdmin(
+  sessionOrRole?:
+    | AdminSession
+    | { role?: string; isSuperAdmin?: boolean; isPlatformSuperAdmin?: boolean }
+    | string
+    | null
+): boolean {
+  if (!sessionOrRole) return false;
+  if (typeof sessionOrRole === 'string') {
+    const norm = sessionOrRole.toUpperCase().trim();
+    return norm === 'SUPER_ADMIN' || norm === 'PLATFORM_SUPER_ADMIN';
+  }
+  if (typeof sessionOrRole === 'object') {
+    if ('isPlatformSuperAdmin' in sessionOrRole && sessionOrRole.isPlatformSuperAdmin) return true;
+    if ('isSuperAdmin' in sessionOrRole && sessionOrRole.isSuperAdmin) return true;
+    if ('role' in sessionOrRole && sessionOrRole.role) {
+      const norm = String(sessionOrRole.role).toUpperCase().trim();
+      return norm === 'SUPER_ADMIN' || norm === 'PLATFORM_SUPER_ADMIN';
+    }
+  }
+  return false;
+}
+
+/**
+ * Checks whether an admin record or session represents the immutable Primary Super Admin.
+ */
+export function isPrimarySuperAdmin(
+  adminOrSession?:
+    | { email?: string; user_id?: string | null; id?: string; userId?: string }
+    | AdminSession
+    | null
+): boolean {
+  if (!adminOrSession) return false;
+  const email = (adminOrSession.email || '').toLowerCase().trim();
+  if (email === PRIMARY_SUPER_ADMIN_EMAIL || email === SUPER_ADMIN_EMAIL) {
+    return true;
+  }
+  const uid =
+    ('userId' in adminOrSession ? adminOrSession.userId : null) ||
+    ('user_id' in adminOrSession ? adminOrSession.user_id : null) ||
+    ('id' in adminOrSession ? adminOrSession.id : null);
+  if (uid && uid === PRIMARY_SUPER_ADMIN_ID) {
+    return true;
+  }
+  return false;
+}
 
 /**
  * Resolves the authenticated multi-tenant admin session.
@@ -280,6 +332,33 @@ export async function requireAdminSession(options?: {
   }
 
   return session;
+}
+
+/**
+ * Server-side protection helper strictly requiring an active Platform Super Admin session.
+ * Throws or redirects if caller lacks Super Admin privileges.
+ */
+export async function requireSuperAdmin(options?: {
+  redirectTo?: string;
+  client?: any;
+}): Promise<AdminSession> {
+  return requireAdminSession({
+    requireSuperAdmin: true,
+    redirectTo: options?.redirectTo,
+    client: options?.client,
+  });
+}
+
+/**
+ * Server-side protection helper requiring either an active College Admin or Super Admin session.
+ */
+export async function requireAdminOrSuperAdmin(options?: {
+  requireCollegeId?: string;
+  redirectTo?: string;
+  client?: any;
+  cookieTenantId?: string;
+}): Promise<AdminSession> {
+  return requireAdminSession(options);
 }
 
 /**
