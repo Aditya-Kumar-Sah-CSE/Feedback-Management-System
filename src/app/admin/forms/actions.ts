@@ -19,7 +19,7 @@ import { createGoogleFeedbackForm } from '@/lib/google/forms';
 import { createFeedbackSpreadsheet } from '@/lib/google/sheets';
 import { linkFormToSpreadsheet } from '@/lib/google/linking';
 import { syncFormResponsesToSheet } from '@/lib/google/sync';
-import { FORM_CONFIRMATION_MESSAGE } from '@/lib/google/template';
+import { getFormConfirmationMessage } from '@/lib/google/template';
 import {
   generateFeedbackFormTitle,
   generateFeedbackFormDescription,
@@ -628,7 +628,7 @@ export async function provisionGoogleFormAndSheetAction(params: {
   // Authoritatively lookup draft form to extract institution
   const { data: draftRecord, error: draftFetchErr } = await supabase
     .from('feedback_forms')
-    .select('id, college_id')
+    .select('id, college_id, college:colleges(id, slug, public_slug)')
     .eq('id', params.draftFormId)
     .maybeSingle();
 
@@ -640,6 +640,13 @@ export async function provisionGoogleFormAndSheetAction(params: {
   if (!targetCollegeId) {
     return { success: false, error: 'Draft form has no associated institution.' };
   }
+
+  const collegeObj = (draftRecord as any).college;
+  const targetCollegeSlug =
+    collegeObj?.public_slug ||
+    collegeObj?.slug ||
+    session.colleges?.find((c) => c.collegeId === targetCollegeId)?.slug ||
+    '';
 
   if (!session.isPlatformSuperAdmin) {
     const isMember = session.colleges?.some(
@@ -670,6 +677,7 @@ export async function provisionGoogleFormAndSheetAction(params: {
         title: params.title,
         description: params.description,
         items: params.items,
+        tenantSlug: targetCollegeSlug,
       }),
       createFeedbackSpreadsheet({
         collegeId: targetCollegeId,
@@ -681,10 +689,11 @@ export async function provisionGoogleFormAndSheetAction(params: {
     googleSheetResult = sheetResult;
 
     // Link Form to Sheet
+    const confirmationMessage = getFormConfirmationMessage(targetCollegeSlug);
     const linkingResult = await linkFormToSpreadsheet(
       googleFormResult.formId,
       googleSheetResult.spreadsheetId,
-      FORM_CONFIRMATION_MESSAGE,
+      confirmationMessage,
       targetCollegeId
     );
 

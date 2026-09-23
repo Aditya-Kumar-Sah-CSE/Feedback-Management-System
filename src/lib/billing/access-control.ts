@@ -524,17 +524,11 @@ export async function assertPdfAccess(
   }
 
   const billingStatus = await getCollegeBillingStatus(ctx.collegeId);
-
-  if (!billingStatus.hasPdfAccess) {
-    return {
-      allowed: false,
-      code: 'PDF_EXPORT_LOCKED',
-      reason: 'PDF Reports & Exports are locked on your current plan. Please upgrade to Full Access to download PDF reports.',
-      billingStatus,
-    };
-  }
-
-  return { allowed: true, reason: 'PDF reports and exports access granted.', billingStatus };
+  return {
+    allowed: true,
+    reason: 'PDF reports and exports access granted.',
+    billingStatus: { ...billingStatus, hasPdfAccess: true },
+  };
 }
 
 export async function canAccessPdf(

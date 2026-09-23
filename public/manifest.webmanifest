@@ -1,9 +1,9 @@
 {
   "$schema": "https://json.schemastore.org/web-manifest-combined.json",
-  "name": "BCE Faculty Feedback Portal",
-  "short_name": "BCE Feedback",
-  "description": "Official Faculty Feedback & Evaluation Management System for Bhagalpur College of Engineering, Government of Bihar",
-  "id": "bce-feedback-portal",
+  "name": "Feedback Management System",
+  "short_name": "FMS Portal",
+  "description": "Multi-Tenant Institutional Faculty Feedback & Evaluation Management System",
+  "id": "fms-feedback-portal",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

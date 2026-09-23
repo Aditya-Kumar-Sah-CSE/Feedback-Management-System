@@ -1,8 +1,8 @@
-// BCE Faculty Feedback Portal — Robust Progressive Web App Service Worker (v2)
+// FMS Faculty Feedback Portal — Robust Progressive Web App Service Worker (v3)
 // Caches static immutable assets and offline shell.
 // STRICTLY excludes /api/, /admin/, /auth/, Supabase, Google, and private response data.
 
-const CACHE_NAME = 'bce-feedback-shell-v2';
+const CACHE_NAME = 'fms-feedback-shell-v3';
 const OFFLINE_URL = '/offline';
 
 const PRECACHE_ASSETS = [
@@ -110,7 +110,7 @@ self.addEventListener('fetch', (event) => {
       fetch(request).catch(() => {
         return caches.match(OFFLINE_URL).then((offlineResponse) => {
           return offlineResponse || new Response(
-            '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline - BCE Feedback</title><style>body{font-family:system-ui,sans-serif;background:#0B192C;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;padding:20px;text-align:center;}a{color:#F59E0B;}</style></head><body><div><h2>You are currently offline</h2><p>Please reconnect to the internet to access live feedback forms and portal records.</p><p><a href="/">Retry Connection</a></p></div></body></html>',
+            '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline - FMS Portal</title><style>body{font-family:system-ui,sans-serif;background:#0B192C;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;padding:20px;text-align:center;}a{color:#F59E0B;}</style></head><body><div><h2>You are currently offline</h2><p>Please reconnect to the internet to access live feedback forms and portal records.</p><p><a href="/">Retry Connection</a></p></div></body></html>',
             {
               status: 503,
               statusText: 'Service Unavailable',

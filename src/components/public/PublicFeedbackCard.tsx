@@ -121,11 +121,11 @@ export function PublicFeedbackCard({ form, isClosed }: boolean extends never ? a
             </div>
           </div>
 
-          {/* BCE 8-Parameter Info Pill */}
+          {/* Academic 8-Parameter Info Pill */}
           <div className="p-3.5 bg-blue-50/70 border border-blue-200/80 rounded-xl text-xs text-blue-950 flex items-start gap-2.5">
             <Sparkles className="w-4 h-4 text-bce-cobalt shrink-0 mt-0.5" />
             <div className="space-y-0.5">
-              <p className="font-bold text-[12px]">Standard BCE 8-Parameter Evaluation</p>
+              <p className="font-bold text-[12px]">Standard 8-Parameter Academic Evaluation</p>
               <p className="text-[11px] text-blue-900/80 leading-relaxed">
                 Includes syllabus covered, communication skills, teaching effectiveness, teacher accessibility, willingness to help, evaluation fairness, and overall rating.
               </p>

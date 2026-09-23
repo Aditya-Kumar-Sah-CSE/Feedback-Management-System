@@ -341,7 +341,7 @@ export async function syncFormResponsesToSheet(params: {
         const semesterName = formRecord.semester?.name || 'Semester';
         const academicYearName = formRecord.academic_year?.name || 'Academic Session';
         const formTitle = formRecord.title || 'Faculty Feedback Form';
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://bce-bgp-feedback-management-system.vercel.app';
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://feedback-management-system-kappa.vercel.app';
 
           // Consolidate response items to track from Forms API + Sheet Rows
           interface TrackingMetadata {

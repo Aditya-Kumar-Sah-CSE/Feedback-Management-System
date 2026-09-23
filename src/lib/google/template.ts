@@ -78,7 +78,7 @@ export interface FormFieldDefinition {
   options?: string[];
 }
 
-export const CANONICAL_PUBLIC_PORTAL_URL = 'https://bce-bgp-feedback-management-system.vercel.app/';
+export const CANONICAL_PUBLIC_PORTAL_URL = 'https://feedback-management-system-kappa.vercel.app';
 
 export const PUBLIC_FEEDBACK_PORTAL_URL =
   process.env.NEXT_PUBLIC_APP_URL || CANONICAL_PUBLIC_PORTAL_URL;
@@ -86,22 +86,35 @@ export const PUBLIC_FEEDBACK_PORTAL_URL =
 export const ADITYA_PORTFOLIO_URL = 'https://portfolio-two-ashen-zseywond41.vercel.app/';
 
 /**
+ * Returns dynamic tenant-aware portal link (e.g. https://.../bce-bgp or https://.../gec-gaya)
+ */
+export function getTenantPortalUrl(tenantSlug?: string): string {
+  const base = (process.env.NEXT_PUBLIC_APP_URL || CANONICAL_PUBLIC_PORTAL_URL).replace(/\/$/, '');
+  return tenantSlug ? `${base}/${tenantSlug}` : base;
+}
+
+/**
  * Standard confirmation message configured via Apps Script.
  * Plain-text URLs ensure reliable rendering in native Google Forms confirmation screen.
  */
-export const FORM_CONFIRMATION_MESSAGE = `Your response has been recorded.
+export function getFormConfirmationMessage(tenantSlug?: string): string {
+  const portalUrl = getTenantPortalUrl(tenantSlug);
+  return `Your response has been recorded.
 
 More Feedback Forms
 
 Need to access more academic feedback forms?
 
 Visit:
-https://bce-bgp-feedback-management-system.vercel.app/
+${portalUrl}
 
 Developer: Aditya Kumar Sah
 
 Portfolio:
-https://portfolio-two-ashen-zseywond41.vercel.app/`;
+${ADITYA_PORTFOLIO_URL}`;
+}
+
+export const FORM_CONFIRMATION_MESSAGE = getFormConfirmationMessage();
 
 export const STUDENT_IDENTIFIER_FIELDS = [
   {
@@ -143,10 +156,15 @@ export const RESPONSE_COPY_INSTRUCTION =
 export const RESPONSE_COPY_SHORT_REMINDER =
   'IMPORTANT: Check your email after submission and keep your response copy. The first page is important for End Sem examination form filling.';
 
-export const MORE_FEEDBACK_INFO_ITEM = {
-  title: 'More Feedback Forms',
-  description: `${RESPONSE_COPY_SHORT_REMINDER}\n\nNeed to access more academic feedback forms?\nVisit:\nhttps://bce-bgp-feedback-management-system.vercel.app/`,
-} as const;
+export function getMoreFeedbackInfoItem(tenantSlug?: string) {
+  const portalUrl = getTenantPortalUrl(tenantSlug);
+  return {
+    title: 'More Feedback Forms',
+    description: `${RESPONSE_COPY_SHORT_REMINDER}\n\nNeed to access more academic feedback forms?\nVisit:\n${portalUrl}`,
+  };
+}
+
+export const MORE_FEEDBACK_INFO_ITEM = getMoreFeedbackInfoItem();
 
 export interface FormMetadataInputs {
   facultyName: string;
@@ -202,7 +220,7 @@ export function generateSemesterFormDescription(meta: {
  * 4. General Feedback (Paragraph text, optional)
  * 5. More Feedback Forms (Text item with public portal link)
  */
-export function buildCreateQuestionsBatchUpdateRequest() {
+export function buildCreateQuestionsBatchUpdateRequest(tenantSlug?: string) {
   const requests: any[] = [];
   let currentIndex = 0;
 
@@ -295,11 +313,12 @@ export function buildCreateQuestionsBatchUpdateRequest() {
   });
 
   // 10. More Feedback Forms (Informational Text Item)
+  const moreInfo = getMoreFeedbackInfoItem(tenantSlug);
   requests.push({
     createItem: {
       item: {
-        title: MORE_FEEDBACK_INFO_ITEM.title,
-        description: MORE_FEEDBACK_INFO_ITEM.description,
+        title: moreInfo.title,
+        description: moreInfo.description,
         textItem: {},
       },
       location: {
@@ -319,7 +338,10 @@ export function buildCreateQuestionsBatchUpdateRequest() {
  * 4. General Feedback (Paragraph text, optional)
  * 5. More Feedback Forms (Text item with public portal link)
  */
-export function buildMultiFacultyGridBatchUpdateRequest(items: MultiFacultyGridItem[]) {
+export function buildMultiFacultyGridBatchUpdateRequest(
+  items: MultiFacultyGridItem[],
+  options?: { isElective?: boolean; tenantSlug?: string }
+) {
   const requests: any[] = [];
   let currentIndex = 0;
 
@@ -421,11 +443,12 @@ export function buildMultiFacultyGridBatchUpdateRequest(items: MultiFacultyGridI
   });
 
   // 5. More Feedback Forms (Informational Text Item)
+  const moreInfo = getMoreFeedbackInfoItem(options?.tenantSlug);
   requests.push({
     createItem: {
       item: {
-        title: MORE_FEEDBACK_INFO_ITEM.title,
-        description: MORE_FEEDBACK_INFO_ITEM.description,
+        title: moreInfo.title,
+        description: moreInfo.description,
         textItem: {},
       },
       location: {

@@ -26,6 +26,7 @@ export async function createGoogleFeedbackForm(params: {
   title: string;
   description: string;
   items?: MultiFacultyGridItem[];
+  tenantSlug?: string;
 }): Promise<CreateFormResult> {
   return executeWithCollegeGoogleOAuthRetry(params.collegeId, async ({ forms }) => {
     // 1. Create the Form container
@@ -48,8 +49,8 @@ export async function createGoogleFeedbackForm(params: {
     // 2. Batch update: Add Form Description, Email Collection Settings, and Template Items
     const questionRequests =
       params.items && params.items.length > 0
-        ? buildMultiFacultyGridBatchUpdateRequest(params.items)
-        : buildCreateQuestionsBatchUpdateRequest();
+        ? buildMultiFacultyGridBatchUpdateRequest(params.items, { tenantSlug: params.tenantSlug })
+        : buildCreateQuestionsBatchUpdateRequest(params.tenantSlug);
 
     const effectiveDescription = params.description?.includes(RESPONSE_COPY_INSTRUCTION)
       ? params.description

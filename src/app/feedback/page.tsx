@@ -93,10 +93,38 @@ export default async function FeedbackPortalPage() {
       {/* Footer */}
       <footer className="bg-bce-navy text-slate-400 text-xs py-6 px-4 border-t border-bce-cobalt/30 mt-auto">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3 text-center sm:text-left">
-          <span>Bhagalpur College of Engineering (BCE Bhagalpur) • Official Student Evaluation Portal</span>
-          <Link href="/admin/login" className="text-amber-400 hover:underline">
-            Admin Login
-          </Link>
+          <div>
+            <span>Bhagalpur College of Engineering (BCE Bhagalpur) • Official Student Evaluation Portal</span>
+            <div className="text-[11px] text-slate-400 mt-1">
+              Developed by{' '}
+              <a
+                href="https://portfolio-two-ashen-zseywond41.vercel.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-amber-400 hover:underline font-medium"
+              >
+                Aditya Kumar Sah
+              </a>
+              {' '}•{' '}
+              <a
+                href="https://portfolio-two-ashen-zseywond41.vercel.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-slate-400 hover:text-slate-200 hover:underline transition-colors"
+              >
+                Portfolio
+              </a>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Link href="/" className="text-slate-300 hover:text-white transition-colors">
+              Platform Home
+            </Link>
+            <span className="text-slate-600">•</span>
+            <Link href="/admin/login" className="text-amber-400 hover:underline">
+              Admin Login
+            </Link>
+          </div>
         </div>
       </footer>
     </div>

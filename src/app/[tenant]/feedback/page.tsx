@@ -97,10 +97,38 @@ export default async function TenantFeedbackPortalPage({ params }: TenantFeedbac
       {/* Footer */}
       <footer className="bg-slate-900 text-slate-400 text-xs py-6 px-4 border-t border-slate-800 mt-auto">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3 text-center sm:text-left">
-          <span>{tenant.name} ({tenant.shortName}) • Official Student Evaluation Portal</span>
-          <Link href={`/${tenant.slug}/admin/login`} className="text-amber-400 hover:underline">
-            Admin Login
-          </Link>
+          <div>
+            <span>{tenant.name} ({tenant.shortName}) • Official Student Evaluation Portal</span>
+            <div className="text-[11px] text-slate-400 mt-1">
+              Developed by{' '}
+              <a
+                href="https://portfolio-two-ashen-zseywond41.vercel.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-amber-400 hover:underline font-medium"
+              >
+                Aditya Kumar Sah
+              </a>
+              {' '}•{' '}
+              <a
+                href="https://portfolio-two-ashen-zseywond41.vercel.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-slate-400 hover:text-slate-200 hover:underline transition-colors"
+              >
+                Portfolio
+              </a>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Link href={`/${tenant.slug}`} className="text-slate-300 hover:text-white transition-colors">
+              Portal Home
+            </Link>
+            <span className="text-slate-600">•</span>
+            <Link href={`/${tenant.slug}/admin/login`} className="text-amber-400 hover:underline">
+              Admin Login
+            </Link>
+          </div>
         </div>
       </footer>
     </div>

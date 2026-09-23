@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getPublicFeedbackFormByIdAction } from '@/app/feedback/actions';
 import { PublicFeedbackCard } from '@/components/public/PublicFeedbackCard';
-import { School, ArrowLeft, ShieldCheck, AlertCircle } from 'lucide-react';
+import { School, ArrowLeft, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
 
 
 export const dynamic = 'force-dynamic';
@@ -97,15 +97,69 @@ export default async function DirectFeedbackPage({
             isClosed={result.status === 'CLOSED'}
           />
         )}
+
+        {/* View More Feedback Forms Callout at end of form */}
+        <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4 mt-6">
+          <div className="flex items-center gap-3.5 text-center sm:text-left">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+              <School className="w-5 h-5 text-blue-600" />
+            </div>
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-slate-900">
+                Need to submit feedback for another course?
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Explore all active feedback forms available for your institution.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2.5 w-full sm:w-auto shrink-0">
+            <Link
+              href="/feedback"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+            >
+              <span>View More Forms</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+        </div>
       </main>
 
       {/* Footer */}
       <footer className="bg-bce-navy text-slate-400 text-xs py-6 px-4 border-t border-bce-cobalt/30 mt-auto">
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3 text-center sm:text-left">
-          <span>Bhagalpur College of Engineering (BCE Bhagalpur) • Sabour, Bhagalpur</span>
-          <Link href="/feedback" className="text-amber-400 hover:underline">
-            All Feedback Forms
-          </Link>
+          <div>
+            <span>Bhagalpur College of Engineering (BCE Bhagalpur) • Sabour, Bhagalpur</span>
+            <div className="text-[11px] text-slate-400 mt-1">
+              Developed by{' '}
+              <a
+                href="https://portfolio-two-ashen-zseywond41.vercel.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-amber-400 hover:underline font-medium"
+              >
+                Aditya Kumar Sah
+              </a>
+              {' '}•{' '}
+              <a
+                href="https://portfolio-two-ashen-zseywond41.vercel.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-slate-400 hover:text-slate-200 hover:underline transition-colors"
+              >
+                Portfolio
+              </a>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Link href="/feedback" className="text-slate-300 hover:text-white transition-colors">
+              All Forms
+            </Link>
+            <span className="text-slate-600">•</span>
+            <Link href="/admin/login" className="text-amber-400 hover:underline">
+              Admin Login
+            </Link>
+          </div>
         </div>
       </footer>
     </div>

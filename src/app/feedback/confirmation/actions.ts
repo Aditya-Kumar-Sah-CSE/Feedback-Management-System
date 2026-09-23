@@ -62,7 +62,7 @@ export async function getConfirmationByTokenAction(
   }
 
   const form: any = rec.form;
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://bce-bgp-feedback-management-system.vercel.app';
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://feedback-management-system-kappa.vercel.app';
   const downloadUrl = `${baseUrl}/api/feedback/response/download?token=${encodeURIComponent(token)}`;
 
   return {
@@ -144,7 +144,7 @@ export async function verifyStudentSubmissionAction(params: {
     email: rec.student_email,
   });
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://bce-bgp-feedback-management-system.vercel.app';
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://feedback-management-system-kappa.vercel.app';
   const downloadUrl = `${baseUrl}/api/feedback/response/download?token=${encodeURIComponent(token)}`;
 
   return {

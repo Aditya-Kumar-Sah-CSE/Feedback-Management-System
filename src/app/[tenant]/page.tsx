@@ -129,6 +129,26 @@ export default async function TenantHomePage({ params }: TenantPageProps) {
           <p>
             Multi-Tenant Feedback Management System • Confidential & Anonymous Institutional Feedback
           </p>
+          <p className="text-[11px] text-slate-500">
+            Designed & Developed by{' '}
+            <a
+              href="https://portfolio-two-ashen-zseywond41.vercel.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:text-blue-800 hover:underline font-medium transition-colors"
+            >
+              Aditya Kumar Sah
+            </a>
+            {' '}•{' '}
+            <a
+              href="https://portfolio-two-ashen-zseywond41.vercel.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-slate-400 hover:text-slate-600 hover:underline transition-colors"
+            >
+              Developer Portfolio
+            </a>
+          </p>
           <p className="text-[11px] text-slate-400">
             Powered by FMS Platform • Secure Tenant: <code className="text-slate-600 font-mono">{tenant.slug}</code>
           </p>

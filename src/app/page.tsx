@@ -71,6 +71,26 @@ export default async function HomePage() {
           <div>
             <p className="font-semibold text-slate-700">Feedback Management System</p>
             <p className="text-[11px] text-slate-500">Multi-tenant Institutional Feedback Platform</p>
+            <p className="text-[11px] text-slate-500 mt-1">
+              Designed & Developed by{' '}
+              <a
+                href="https://portfolio-two-ashen-zseywond41.vercel.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+              >
+                Aditya Kumar Sah
+              </a>
+              {' '}•{' '}
+              <a
+                href="https://portfolio-two-ashen-zseywond41.vercel.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-slate-400 hover:text-slate-600 hover:underline transition-colors"
+              >
+                Developer Portfolio
+              </a>
+            </p>
           </div>
           <div className="flex items-center gap-4 text-[11px] text-slate-500">
             <Link href="/privacy-policy" className="hover:text-slate-900 transition-colors">

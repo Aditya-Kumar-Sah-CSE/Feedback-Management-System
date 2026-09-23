@@ -25,7 +25,7 @@ import {
   ChevronRight,
   Filter,
   BarChart3,
-  Award,
+  Star,
   Users,
   CheckCircle2,
   FileSpreadsheet,
@@ -85,7 +85,7 @@ export function ResultsDashboardClient({
     try {
       await downloadPdfFile({
         url: pdfExportUrl,
-        defaultFilename: 'bce-institutional-feedback-report.pdf',
+        defaultFilename: 'institutional-feedback-report.pdf',
         onError: (err) => {
           setPdfNotification(typeof err === 'string' ? err : err.message);
           setTimeout(() => setPdfNotification(null), 5000);
@@ -417,7 +417,7 @@ export function ResultsDashboardClient({
         <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between text-slate-400">
             <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">Scope Rating</span>
-            <Award className="w-4 h-4 text-emerald-600" />
+            <Star className="w-4 h-4 text-amber-500 fill-amber-400/20" />
           </div>
           <div className="text-xl sm:text-2xl font-bold text-slate-900 mt-1.5 sm:mt-2">
             {report.hasData ? (

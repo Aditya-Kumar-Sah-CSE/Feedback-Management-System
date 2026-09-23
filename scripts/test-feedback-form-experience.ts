@@ -100,7 +100,7 @@ async function runFeedbackFormExperienceTests() {
   }
 
   console.log('Canonical Portal URL:', CANONICAL_PUBLIC_PORTAL_URL);
-  if (CANONICAL_PUBLIC_PORTAL_URL !== 'https://bce-bgp-feedback-management-system.vercel.app/') {
+  if (CANONICAL_PUBLIC_PORTAL_URL !== 'https://feedback-management-system-kappa.vercel.app') {
     throw new Error(`Invalid portal URL: ${CANONICAL_PUBLIC_PORTAL_URL}`);
   }
 

@@ -26,7 +26,7 @@ var CANONICAL_DEFAULT_CONFIRMATION_MESSAGE = [
   'Need to access more academic feedback forms?',
   '',
   'Visit:',
-  'https://bce-bgp-feedback-management-system.vercel.app/',
+  'https://feedback-management-system-kappa.vercel.app/',
   '',
   'Developer: Aditya Kumar Sah',
   '',

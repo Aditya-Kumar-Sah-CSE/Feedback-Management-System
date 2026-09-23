@@ -154,7 +154,7 @@ async function runComprehensiveRealE2E() {
   const studentNameItem = formItems.find(it => it.title?.toLowerCase().includes('student name'));
   const regNoItem = formItems.find(it => it.title?.toLowerCase().includes('registration'));
   const generalFeedbackItem = formItems.find(it => it.title?.toLowerCase().includes('general feedback'));
-  const moreFormsLink = formItems.find(it => it.textItem && it.description?.includes('https://bce-bgp-feedback-management-system.vercel.app/'));
+  const moreFormsLink = formItems.find(it => it.textItem && (it.description?.includes('https://feedback-management-system-kappa.vercel.app') || it.description?.includes('feedback-management-system')));
 
   if (!studentNameItem || !regNoItem || !generalFeedbackItem) {
     throw new Error('Missing student details or general feedback item in form!');

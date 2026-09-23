@@ -7,7 +7,6 @@ import {
   FEATURE_GOOGLE_SHEET_INTEGRATION,
   FEATURE_FULL_ANALYTICS_ACCESS,
   FEATURE_BASIC_ANALYTICS,
-  FEATURE_ANALYTICS_PDF,
   FEATURE_PRIORITY_SUPPORT,
   planHasFeature,
 } from './constants';
@@ -224,7 +223,7 @@ export const getCollegeEntitlements = cache(async (collegeId: string): Promise<C
   const hasSheetIntegration = planHasFeature(effectiveFeatures, FEATURE_GOOGLE_SHEET_INTEGRATION);
   const hasBasicAnalytics = planHasFeature(effectiveFeatures, FEATURE_BASIC_ANALYTICS);
   const hasFullAnalytics = planHasFeature(effectiveFeatures, FEATURE_FULL_ANALYTICS_ACCESS);
-  const hasPdfAccess = planHasFeature(effectiveFeatures, FEATURE_ANALYTICS_PDF);
+  const hasPdfAccess = true; // Enabled across all colleges for full institutional, faculty, and response PDF exports
 
   const isUnlocked = hasFormGeneration;
   const accessStatus: 'LOCKED' | 'UNLOCKED' = isUnlocked ? 'UNLOCKED' : (billing?.access_status || 'LOCKED');
