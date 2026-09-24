@@ -41,7 +41,7 @@ async function logAuditAction(
 ) {
   try {
     await supabase.from('audit_logs').insert({
-      admin_id: actor.adminId || null,
+      actor_user_id: actor.adminId || null,
       actor_email: actor.email,
       action,
       entity_type: entityType,
@@ -628,12 +628,13 @@ export async function provisionGoogleFormAndSheetAction(params: {
   // Authoritatively lookup draft form to extract institution
   const { data: draftRecord, error: draftFetchErr } = await supabase
     .from('feedback_forms')
-    .select('id, college_id, college:colleges(id, slug, public_slug)')
+    .select('id, college_id, college:colleges(id, slug)')
     .eq('id', params.draftFormId)
     .maybeSingle();
 
   if (draftFetchErr || !draftRecord) {
-    return { success: false, error: 'Draft form record not found.' };
+    console.error('provisionGoogleFormAndSheetAction draft form lookup error:', draftFetchErr);
+    return { success: false, error: `Draft form record not found: ${draftFetchErr?.message || 'Record missing'}` };
   }
 
   const targetCollegeId = draftRecord.college_id;
@@ -643,7 +644,6 @@ export async function provisionGoogleFormAndSheetAction(params: {
 
   const collegeObj = (draftRecord as any).college;
   const targetCollegeSlug =
-    collegeObj?.public_slug ||
     collegeObj?.slug ||
     session.colleges?.find((c) => c.collegeId === targetCollegeId)?.slug ||
     '';
