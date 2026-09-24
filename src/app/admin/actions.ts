@@ -2102,6 +2102,172 @@ export async function createAssignmentAction(data: {
   return { success: true, assignment: newAssign };
 }
 
+export async function updateAssignmentAction(
+  id: string,
+  data: {
+    faculty_id: string;
+    subject_id: string;
+    academic_year_id: string;
+    branch_id?: string;
+    semester_id?: string;
+    is_active: boolean;
+    collegeId?: string;
+  }
+) {
+  const session = await getAdminSession();
+  if (!session.isAuthenticated || !session.isActive) {
+    return { success: false, error: 'Unauthorized.' };
+  }
+
+  if (!isValidUUID(id)) {
+    return { success: false, error: 'Invalid assignment ID.' };
+  }
+
+  let authorizedCollegeId: string;
+  try {
+    authorizedCollegeId = await resolveAuthorizedCollegeId(session, data.collegeId);
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Unauthorized: Target institution resolution failed.' };
+  }
+
+  const supabase = await getAdminDb();
+
+  // 1. Verify target assignment exists and belongs to this college
+  const { data: targetAssign, error: fetchErr } = await supabase
+    .from('faculty_subject_assignments')
+    .select('id, college_id')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (fetchErr || !targetAssign) {
+    return { success: false, error: 'Assignment not found.' };
+  }
+
+  if (!session.isPlatformSuperAdmin && targetAssign.college_id !== authorizedCollegeId) {
+    return { success: false, error: 'Forbidden: You cannot modify an assignment belonging to another institution.' };
+  }
+
+  const effectiveCollegeId = session.isPlatformSuperAdmin ? targetAssign.college_id : authorizedCollegeId;
+
+  // 2. Validate faculty belongs to this college
+  const { data: validFac } = await supabase
+    .from('faculties')
+    .select('id')
+    .eq('id', data.faculty_id)
+    .eq('college_id', effectiveCollegeId)
+    .maybeSingle();
+
+  if (!validFac) {
+    return { success: false, error: 'The selected faculty member does not exist or does not belong to your institution.' };
+  }
+
+  // 3. Validate course subject belongs to this college
+  const { data: validSub } = await supabase
+    .from('subjects')
+    .select('id')
+    .eq('id', data.subject_id)
+    .eq('college_id', effectiveCollegeId)
+    .maybeSingle();
+
+  if (!validSub) {
+    return { success: false, error: 'The selected course subject does not exist or does not belong to your institution.' };
+  }
+
+  // 4. Validate academic year belongs to this college
+  const { data: validYear } = await supabase
+    .from('academic_years')
+    .select('id')
+    .eq('id', data.academic_year_id)
+    .eq('college_id', effectiveCollegeId)
+    .maybeSingle();
+
+  if (!validYear) {
+    return { success: false, error: 'The selected academic session does not exist or does not belong to your institution.' };
+  }
+
+  // 5. Validate branch belongs to this college if provided
+  let branchId: string | null = null;
+  if (data.branch_id && data.branch_id.trim()) {
+    const { data: validBranch } = await supabase
+      .from('branches')
+      .select('id')
+      .eq('id', data.branch_id.trim())
+      .eq('college_id', effectiveCollegeId)
+      .maybeSingle();
+
+    if (!validBranch) {
+      return { success: false, error: 'The selected branch does not belong to your institution.' };
+    }
+    branchId = validBranch.id;
+  }
+
+  // 6. Validate semester belongs to this college if provided
+  let semesterId: string | null = null;
+  if (data.semester_id && data.semester_id.trim()) {
+    const { data: validSem } = await supabase
+      .from('semesters')
+      .select('id')
+      .eq('id', data.semester_id.trim())
+      .eq('college_id', effectiveCollegeId)
+      .maybeSingle();
+
+    if (!validSem) {
+      return { success: false, error: 'The selected semester does not belong to your institution.' };
+    }
+    semesterId = validSem.id;
+  }
+
+  // 7. Check uniqueness (uq_faculty_assignments_f_s_y: college_id, faculty_id, subject_id, academic_year_id) excluding this assignment
+  const { data: existingAssign } = await supabase
+    .from('faculty_subject_assignments')
+    .select('id')
+    .eq('college_id', effectiveCollegeId)
+    .eq('faculty_id', data.faculty_id)
+    .eq('subject_id', data.subject_id)
+    .eq('academic_year_id', data.academic_year_id)
+    .neq('id', id)
+    .maybeSingle();
+
+  if (existingAssign) {
+    return { success: false, error: 'This faculty member is already assigned to this course subject for the selected academic session in this institution.' };
+  }
+
+  const payload: Record<string, any> = {
+    faculty_id: data.faculty_id,
+    subject_id: data.subject_id,
+    academic_year_id: data.academic_year_id,
+    branch_id: branchId,
+    semester_id: semesterId,
+    is_active: data.is_active,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data: updatedAssign, error } = await supabase
+    .from('faculty_subject_assignments')
+    .update(payload)
+    .eq('id', id)
+    .eq('college_id', effectiveCollegeId)
+    .select('*')
+    .single();
+
+  if (error) return { success: false, error: error.message };
+
+  await logAuditAction(
+    supabase,
+    { adminId: session.admin?.id, email: session.user?.email },
+    'UPDATE_FACULTY_SUBJECT_ASSIGNMENT',
+    'faculty_subject_assignments',
+    id,
+    `Updated faculty-subject assignment in institution ${effectiveCollegeId}`
+  );
+
+  revalidateTag(ACADEMIC_CACHE_TAG);
+  revalidateTag(`academic_masters_${effectiveCollegeId}`);
+  revalidatePath('/admin/dashboard');
+  revalidatePath('/');
+  return { success: true, assignment: updatedAssign };
+}
+
 export async function deleteAssignmentAction(id: string, targetCollegeId?: string) {
   const session = await getAdminSession();
   if (!session.isAuthenticated || !session.isActive) {

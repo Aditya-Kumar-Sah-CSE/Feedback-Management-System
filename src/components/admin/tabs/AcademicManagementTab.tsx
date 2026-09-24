@@ -18,6 +18,7 @@ import {
   updateSubjectAction,
   deleteSubjectAction,
   createAssignmentAction,
+  updateAssignmentAction,
   deleteAssignmentAction,
   getPaginatedFacultiesAction,
   getPaginatedSubjectsAction,
@@ -277,7 +278,33 @@ export function AcademicManagementTab({
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
   const [editBranchName, setEditBranchName] = useState('');
   const [editBranchCode, setEditBranchCode] = useState('');
+  const [editBranchActive, setEditBranchActive] = useState(true);
   const [deletingBranch, setDeletingBranch] = useState<Branch | null>(null);
+
+  // Faculty edit state
+  const [editingFaculty, setEditingFaculty] = useState<Faculty | null>(null);
+  const [editFacName, setEditFacName] = useState('');
+  const [editFacDept, setEditFacDept] = useState('');
+  const [editFacDesig, setEditFacDesig] = useState('Assistant Professor');
+  const [editFacEmpId, setEditFacEmpId] = useState('');
+  const [editFacActive, setEditFacActive] = useState(true);
+
+  // Subject edit state
+  const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
+  const [editSubName, setEditSubName] = useState('');
+  const [editSubCode, setEditSubCode] = useState('');
+  const [editSubBranchId, setEditSubBranchId] = useState('');
+  const [editSubSemesterId, setEditSubSemesterId] = useState('');
+  const [editSubActive, setEditSubActive] = useState(true);
+
+  // Assignment edit state
+  const [editingAssignment, setEditingAssignment] = useState<FacultySubjectAssignment | null>(null);
+  const [editAssignFacultyId, setEditAssignFacultyId] = useState('');
+  const [editAssignSubjectId, setEditAssignSubjectId] = useState('');
+  const [editAssignYearId, setEditAssignYearId] = useState('');
+  const [editAssignBranchId, setEditAssignBranchId] = useState('');
+  const [editAssignSemesterId, setEditAssignSemesterId] = useState('');
+  const [editAssignActive, setEditAssignActive] = useState(true);
 
   // 5. Semester form & deletion state
   const [semNumber, setSemNumber] = useState<number>(1);
@@ -571,10 +598,163 @@ export function AcademicManagementTab({
     });
   };
 
+  const handleOpenEditFaculty = (f: Faculty) => {
+    setEditingFaculty(f);
+    setEditFacName(f.name);
+    setEditFacDept(f.department || (branchList[0]?.name || ''));
+    setEditFacDesig(f.designation || 'Assistant Professor');
+    setEditFacEmpId(f.employee_id || '');
+    setEditFacActive(f.is_active);
+  };
+
+  const handleUpdateFacultySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingFaculty) return;
+    setMessage(null);
+    startTransition(async () => {
+      const res = await updateFacultyAction(editingFaculty.id, {
+        name: editFacName,
+        department: editFacDept,
+        designation: editFacDesig,
+        employee_id: editFacEmpId || undefined,
+        is_active: editFacActive,
+        collegeId: activeCollegeId,
+      });
+      if (res.success) {
+        setMessage({
+          type: 'success',
+          text: `Faculty "${editFacName.trim()}" updated successfully.`,
+        });
+        setFacultyList((prev) =>
+          prev.map((f) =>
+            f.id === editingFaculty.id
+              ? {
+                  ...f,
+                  name: editFacName.trim(),
+                  department: editFacDept.trim(),
+                  designation: editFacDesig.trim(),
+                  employee_id: editFacEmpId.trim() || null,
+                  is_active: editFacActive,
+                }
+              : f
+          )
+        );
+        setEditingFaculty(null);
+      } else {
+        setMessage({ type: 'error', text: res.error || 'Failed to update faculty.' });
+      }
+    });
+  };
+
+  const handleOpenEditSubject = (s: Subject) => {
+    setEditingSubject(s);
+    setEditSubName(s.name);
+    setEditSubCode(s.code);
+    setEditSubBranchId(s.branch_id || '');
+    setEditSubSemesterId(s.semester_id || '');
+    setEditSubActive(s.is_active);
+  };
+
+  const handleUpdateSubjectSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSubject) return;
+    setMessage(null);
+    startTransition(async () => {
+      const res = await updateSubjectAction(editingSubject.id, {
+        name: editSubName,
+        code: editSubCode,
+        branch_id: editSubBranchId || undefined,
+        semester_id: editSubSemesterId || undefined,
+        is_active: editSubActive,
+        collegeId: activeCollegeId,
+      });
+      if (res.success) {
+        setMessage({
+          type: 'success',
+          text: `Subject "${editSubName.trim()}" (${editSubCode.trim().toUpperCase()}) updated successfully.`,
+        });
+        setSubjectList((prev) =>
+          prev.map((s) =>
+            s.id === editingSubject.id
+              ? {
+                  ...s,
+                  name: editSubName.trim(),
+                  code: editSubCode.trim().toUpperCase(),
+                  branch_id: editSubBranchId || null,
+                  semester_id: editSubSemesterId || null,
+                  is_active: editSubActive,
+                }
+              : s
+          )
+        );
+        setEditingSubject(null);
+      } else {
+        setMessage({ type: 'error', text: res.error || 'Failed to update subject.' });
+      }
+    });
+  };
+
+  const handleOpenEditAssignment = (a: FacultySubjectAssignment) => {
+    setEditingAssignment(a);
+    setEditAssignFacultyId(a.faculty_id);
+    setEditAssignSubjectId(a.subject_id);
+    setEditAssignYearId(a.academic_year_id);
+    setEditAssignBranchId(a.branch_id || '');
+    setEditAssignSemesterId(a.semester_id || '');
+    setEditAssignActive(a.is_active);
+  };
+
+  const handleUpdateAssignmentSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingAssignment) return;
+    setMessage(null);
+    startTransition(async () => {
+      const res = await updateAssignmentAction(editingAssignment.id, {
+        faculty_id: editAssignFacultyId,
+        subject_id: editAssignSubjectId,
+        academic_year_id: editAssignYearId,
+        branch_id: editAssignBranchId || undefined,
+        semester_id: editAssignSemesterId || undefined,
+        is_active: editAssignActive,
+        collegeId: activeCollegeId,
+      });
+      if (res.success && res.assignment) {
+        setMessage({
+          type: 'success',
+          text: `Assignment updated successfully.`,
+        });
+        const faculty = facultyList.find((f) => f.id === editAssignFacultyId);
+        const subject = subjectList.find((s) => s.id === editAssignSubjectId);
+        const year = yearList.find((y) => y.id === editAssignYearId);
+        const branch = branchList.find((b) => b.id === editAssignBranchId);
+        const semester = semesterList.find((s) => s.id === editAssignSemesterId);
+
+        const updatedObj = {
+          ...editingAssignment,
+          ...res.assignment,
+          faculty: faculty || editingAssignment.faculty,
+          subject: subject || editingAssignment.subject,
+          academic_year: year || editingAssignment.academic_year,
+          branch: branch || undefined,
+          semester: semester || undefined,
+          is_active: editAssignActive,
+        } as unknown as FacultySubjectAssignment;
+
+        setAssignmentList((prev) =>
+          prev.map((a) => (a.id === editingAssignment.id ? updatedObj : a))
+        );
+        setEditingAssignment(null);
+      } else {
+        setMessage({ type: 'error', text: res.error || 'Failed to update assignment.' });
+      }
+    });
+  };
+
   const handleOpenEditBranch = (b: Branch) => {
     setEditingBranch(b);
     setEditBranchName(b.name);
     setEditBranchCode(b.code);
+    setEditBranchActive(b.is_active);
   };
 
   const handleUpdateBranchSubmit = (e: React.FormEvent) => {
@@ -585,7 +765,7 @@ export function AcademicManagementTab({
       const res = await updateBranchAction(editingBranch.id, {
         name: editBranchName,
         code: editBranchCode,
-        is_active: editingBranch.is_active,
+        is_active: editBranchActive,
         collegeId: activeCollegeId,
       });
       if (res.success) {
@@ -596,7 +776,7 @@ export function AcademicManagementTab({
         setBranchList((prev) =>
           prev.map((b) =>
             b.id === editingBranch.id
-              ? { ...b, name: editBranchName.trim(), code: editBranchCode.trim().toUpperCase() }
+              ? { ...b, name: editBranchName.trim(), code: editBranchCode.trim().toUpperCase(), is_active: editBranchActive }
               : b
           )
         );
@@ -919,13 +1099,24 @@ export function AcademicManagementTab({
                           </button>
                         </td>
                         <td className="px-4 py-2.5 text-right">
-                          <button
-                            onClick={() => handleDeleteFaculty(f.id, f.name)}
-                            className="p-1 rounded text-rose-600 hover:bg-rose-50 transition-colors"
-                            title="Delete faculty member"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="inline-flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditFaculty(f)}
+                              className="p-1 rounded text-slate-500 hover:text-bce-cobalt hover:bg-slate-100 transition-colors"
+                              title="Edit faculty member"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteFaculty(f.id, f.name)}
+                              className="p-1 rounded text-rose-600 hover:bg-rose-50 transition-colors"
+                              title="Delete faculty member"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -949,6 +1140,116 @@ export function AcademicManagementTab({
               isLoading={facultyLoading}
             />
           </div>
+
+          {/* Edit Faculty Modal */}
+          {editingFaculty && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+              <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150">
+                <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                    <Edit2 className="w-4 h-4 text-bce-cobalt" />
+                    <span>Edit Faculty Member</span>
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setEditingFaculty(null)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleUpdateFacultySubmit} className="p-5 space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Faculty Name
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editFacName}
+                      onChange={(e) => setEditFacName(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-bce-cobalt/20"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Department / Branch
+                    </label>
+                    <select
+                      value={editFacDept}
+                      onChange={(e) => setEditFacDept(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-bce-cobalt/20"
+                    >
+                      {activeBranches.map((b) => (
+                        <option key={b.id} value={b.name}>
+                          {b.name} ({b.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Designation
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editFacDesig}
+                      onChange={(e) => setEditFacDesig(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-bce-cobalt/20"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Employee ID (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={editFacEmpId}
+                      onChange={(e) => setEditFacEmpId(e.target.value)}
+                      placeholder="e.g. EMP-101"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-bce-cobalt/20 font-mono"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="checkbox"
+                      id="editFacActive"
+                      checked={editFacActive}
+                      onChange={(e) => setEditFacActive(e.target.checked)}
+                      className="w-4 h-4 text-bce-cobalt rounded border-slate-300 focus:ring-bce-cobalt/20"
+                    />
+                    <label htmlFor="editFacActive" className="text-xs font-medium text-slate-700 select-none cursor-pointer">
+                      Active faculty member (visible for feedback & assignments)
+                    </label>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setEditingFaculty(null)}
+                      className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isPending}
+                      className="px-4 py-2 rounded-xl bg-bce-cobalt hover:bg-bce-navy text-white text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-xs"
+                    >
+                      {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                      <span>Save Changes</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1140,13 +1441,24 @@ export function AcademicManagementTab({
                             </button>
                           </td>
                           <td className="px-4 py-2.5 text-right">
-                            <button
-                              onClick={() => handleDeleteSubject(s.id, s.name)}
-                              className="p-1 rounded text-rose-600 hover:bg-rose-50 transition-colors"
-                              title="Delete subject"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="inline-flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditSubject(s)}
+                                className="p-1 rounded text-slate-500 hover:text-bce-cobalt hover:bg-slate-100 transition-colors"
+                                title="Edit subject"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteSubject(s.id, s.name)}
+                                className="p-1 rounded text-rose-600 hover:bg-rose-50 transition-colors"
+                                title="Delete subject"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1171,6 +1483,122 @@ export function AcademicManagementTab({
               isLoading={subjectLoading}
             />
           </div>
+
+          {/* Edit Subject Modal */}
+          {editingSubject && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+              <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150">
+                <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                    <Edit2 className="w-4 h-4 text-bce-cobalt" />
+                    <span>Edit Course Subject</span>
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setEditingSubject(null)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleUpdateSubjectSubmit} className="p-5 space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Subject Name
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editSubName}
+                      onChange={(e) => setEditSubName(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-bce-cobalt/20"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Subject Code
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editSubCode}
+                      onChange={(e) => setEditSubCode(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 uppercase font-mono focus:outline-none focus:ring-2 focus:ring-bce-cobalt/20"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Branch / Discipline
+                    </label>
+                    <select
+                      value={editSubBranchId}
+                      onChange={(e) => setEditSubBranchId(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-bce-cobalt/20"
+                    >
+                      <option value="">All Branches</option>
+                      {activeBranches.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name} ({b.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Semester
+                    </label>
+                    <select
+                      value={editSubSemesterId}
+                      onChange={(e) => setEditSubSemesterId(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-bce-cobalt/20"
+                    >
+                      <option value="">Select Semester</option>
+                      {semesterList.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="checkbox"
+                      id="editSubActive"
+                      checked={editSubActive}
+                      onChange={(e) => setEditSubActive(e.target.checked)}
+                      className="w-4 h-4 text-bce-cobalt rounded border-slate-300 focus:ring-bce-cobalt/20"
+                    />
+                    <label htmlFor="editSubActive" className="text-xs font-medium text-slate-700 select-none cursor-pointer">
+                      Active course subject
+                    </label>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setEditingSubject(null)}
+                      className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isPending}
+                      className="px-4 py-2 rounded-xl bg-bce-cobalt hover:bg-bce-navy text-white text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-xs"
+                    >
+                      {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                      <span>Save Changes</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1369,13 +1797,24 @@ export function AcademicManagementTab({
                           <td className="px-4 py-2.5 text-slate-500 font-mono">{year?.name || '—'}</td>
                           <td className="px-4 py-2.5 text-slate-500">{branch?.code || 'All'}</td>
                           <td className="px-4 py-2.5 text-right">
-                            <button
-                              onClick={() => handleDeleteAssignment(a.id)}
-                              className="p-1 rounded text-rose-600 hover:bg-rose-50 transition-colors"
-                              title="Delete Assignment"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            <div className="inline-flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditAssignment(a)}
+                                className="p-1 rounded text-slate-500 hover:text-bce-cobalt hover:bg-slate-100 transition-colors"
+                                title="Edit Assignment"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteAssignment(a.id)}
+                                className="p-1 rounded text-rose-600 hover:bg-rose-50 transition-colors"
+                                title="Delete Assignment"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1400,6 +1839,150 @@ export function AcademicManagementTab({
               isLoading={assignLoading}
             />
           </div>
+
+          {/* Edit Assignment Modal */}
+          {editingAssignment && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+              <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150">
+                <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                    <Edit2 className="w-4 h-4 text-bce-cobalt" />
+                    <span>Edit Course Assignment</span>
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setEditingAssignment(null)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleUpdateAssignmentSubmit} className="p-5 space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Faculty Member
+                    </label>
+                    <select
+                      value={editAssignFacultyId}
+                      onChange={(e) => setEditAssignFacultyId(e.target.value)}
+                      required
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-bce-cobalt/20"
+                    >
+                      {facultyList.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name} ({f.department || 'General'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Course Subject
+                    </label>
+                    <select
+                      value={editAssignSubjectId}
+                      onChange={(e) => setEditAssignSubjectId(e.target.value)}
+                      required
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-bce-cobalt/20"
+                    >
+                      {subjectList.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Academic Session
+                    </label>
+                    <select
+                      value={editAssignYearId}
+                      onChange={(e) => setEditAssignYearId(e.target.value)}
+                      required
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-bce-cobalt/20"
+                    >
+                      {yearList.map((y) => (
+                        <option key={y.id} value={y.id}>
+                          {y.name} {y.is_active ? '(Active)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Branch / Discipline
+                    </label>
+                    <select
+                      value={editAssignBranchId}
+                      onChange={(e) => setEditAssignBranchId(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-bce-cobalt/20"
+                    >
+                      <option value="">All Branches</option>
+                      {activeBranches.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name} ({b.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Semester
+                    </label>
+                    <select
+                      value={editAssignSemesterId}
+                      onChange={(e) => setEditAssignSemesterId(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-bce-cobalt/20"
+                    >
+                      <option value="">All Semesters</option>
+                      {semesterList.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="checkbox"
+                      id="editAssignActive"
+                      checked={editAssignActive}
+                      onChange={(e) => setEditAssignActive(e.target.checked)}
+                      className="w-4 h-4 text-bce-cobalt rounded border-slate-300 focus:ring-bce-cobalt/20"
+                    />
+                    <label htmlFor="editAssignActive" className="text-xs font-medium text-slate-700 select-none cursor-pointer">
+                      Active course assignment
+                    </label>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setEditingAssignment(null)}
+                      className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isPending}
+                      className="px-4 py-2 rounded-xl bg-bce-cobalt hover:bg-bce-navy text-white text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-xs"
+                    >
+                      {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                      <span>Save Changes</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1647,6 +2230,19 @@ export function AcademicManagementTab({
                       onChange={(e) => setEditBranchCode(e.target.value)}
                       className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 uppercase focus:outline-none focus:ring-2 focus:ring-bce-cobalt/20"
                     />
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="checkbox"
+                      id="editBranchActive"
+                      checked={editBranchActive}
+                      onChange={(e) => setEditBranchActive(e.target.checked)}
+                      className="w-4 h-4 text-bce-cobalt rounded border-slate-300 focus:ring-bce-cobalt/20"
+                    />
+                    <label htmlFor="editBranchActive" className="text-xs font-medium text-slate-700 select-none cursor-pointer">
+                      Active engineering branch
+                    </label>
                   </div>
 
                   <div className="flex items-center justify-end gap-2 pt-2">
