@@ -148,6 +148,16 @@ export default async function TenantHomePage({ params }: TenantPageProps) {
             >
               Developer Portfolio
             </a>
+            {' '}under the guidance of{' '}
+            <a
+              href="https://www.bcebhagalpur.ac.in/faculty/abhinav-kumar/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:text-blue-800 hover:underline font-medium transition-colors"
+            >
+              Dr. Abhinav Kumar
+            </a>
+            {' '}(Assistant Professor)
           </p>
           <p className="text-[11px] text-slate-400">
             Powered by FMS Platform • Secure Tenant: <code className="text-slate-600 font-mono">{tenant.slug}</code>

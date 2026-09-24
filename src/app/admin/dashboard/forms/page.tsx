@@ -55,25 +55,43 @@ export default async function FeedbackFormsPage({
   const from = (currentPage - 1) * pageSize;
   const to = from + pageSize - 1;
 
+  const targetCollegeId = session.activeCollegeId || (!session.isPlatformSuperAdmin ? '00000000-0000-0000-0000-000000000000' : undefined);
+
   let yearsQuery = supabase.from('academic_years').select('id, name, is_active').order('name', { ascending: false });
   let branchesQuery = supabase.from('branches').select('id, name, code, is_active').eq('is_active', true).order('name', { ascending: true });
   let semestersQuery = supabase.from('semesters').select('id, name, semester_number, is_active').order('semester_number');
 
-  if (session.activeCollegeId) {
-    yearsQuery = yearsQuery.eq('college_id', session.activeCollegeId);
-    branchesQuery = branchesQuery.eq('college_id', session.activeCollegeId);
-    semestersQuery = semestersQuery.eq('college_id', session.activeCollegeId);
+  if (targetCollegeId) {
+    yearsQuery = yearsQuery.eq('college_id', targetCollegeId);
+    branchesQuery = branchesQuery.eq('college_id', targetCollegeId);
+    semestersQuery = semestersQuery.eq('college_id', targetCollegeId);
   }
 
-  // Fetch academic masters for filters (lean selects)
+  let pubCountQuery = supabase.from('feedback_forms').select('id', { count: 'exact', head: true }).eq('status', 'PUBLISHED');
+  let draftCountQuery = supabase.from('feedback_forms').select('id', { count: 'exact', head: true }).eq('status', 'DRAFT');
+  let closedCountQuery = supabase.from('feedback_forms').select('id', { count: 'exact', head: true }).eq('status', 'CLOSED');
+
+  if (targetCollegeId) {
+    pubCountQuery = pubCountQuery.eq('college_id', targetCollegeId);
+    draftCountQuery = draftCountQuery.eq('college_id', targetCollegeId);
+    closedCountQuery = closedCountQuery.eq('college_id', targetCollegeId);
+  }
+
+  // Fetch academic masters and lifecycle status counts strictly scoped to institution
   const [
     { data: years },
     { data: branches },
     { data: semesters },
+    { count: publishedCount },
+    { count: draftCount },
+    { count: closedCount },
   ] = await Promise.all([
     yearsQuery,
     branchesQuery,
     semestersQuery,
+    pubCountQuery,
+    draftCountQuery,
+    closedCountQuery,
   ]);
 
   // Query forms with lean relational projections
@@ -108,6 +126,10 @@ export default async function FeedbackFormsPage({
     `, { count: 'exact' })
     .order('created_at', { ascending: false });
 
+  if (targetCollegeId) {
+    query = query.eq('college_id', targetCollegeId);
+  }
+
   if (resolvedParams.year && resolvedParams.year !== 'ALL') {
     query = query.eq('academic_year_id', resolvedParams.year);
   }
@@ -135,15 +157,25 @@ export default async function FeedbackFormsPage({
   // Fallback: If relational nested query returned error or empty due to schema cache join mismatch, fetch base and join in memory
   if (queryErr) {
     console.warn('Nested relational join failed in forms catalog:', queryErr.message, 'Falling back to base query...');
+    let facQuery = supabase.from('faculties').select('id, name, department');
+    let subQuery = supabase.from('subjects').select('id, name, code');
+    if (targetCollegeId) {
+      facQuery = facQuery.eq('college_id', targetCollegeId);
+      subQuery = subQuery.eq('college_id', targetCollegeId);
+    }
     const [{ data: faculties }, { data: subjects }] = await Promise.all([
-      supabase.from('faculties').select('id, name, department'),
-      supabase.from('subjects').select('id, name, code'),
+      facQuery,
+      subQuery,
     ]);
 
     let baseQuery = supabase
       .from('feedback_forms')
       .select('*', { count: 'exact' })
       .order('created_at', { ascending: false });
+
+    if (targetCollegeId) {
+      baseQuery = baseQuery.eq('college_id', targetCollegeId);
+    }
 
     if (resolvedParams.year && resolvedParams.year !== 'ALL') {
       baseQuery = baseQuery.eq('academic_year_id', resolvedParams.year);
@@ -174,6 +206,8 @@ export default async function FeedbackFormsPage({
         branch: branches?.find((b: any) => b.id === f.branch_id),
         semester: semesters?.find((s: any) => s.id === f.semester_id),
       })) as FeedbackForm[];
+    } else {
+      forms = [];
     }
   }
 
@@ -236,7 +270,7 @@ export default async function FeedbackFormsPage({
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Create standard 8-parameter BCE Google Feedback Forms, manage connected response Google Sheets, and oversee form lifecycles.
+            Create standard 8-parameter {session.activeCollege?.name ? `${session.activeCollege.name} ` : ''}Google Feedback Forms, manage connected response Google Sheets, and oversee form lifecycles.
           </p>
         </div>
 
@@ -316,14 +350,14 @@ export default async function FeedbackFormsPage({
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="p-5 border-b border-slate-100 flex items-center justify-between">
           <h3 className="text-sm font-bold text-slate-900">
-            Feedback Forms Catalog ({forms.length})
+            Feedback Forms Catalog ({totalCount})
           </h3>
           <div className="flex items-center gap-3 text-xs text-slate-500">
-            <span>{forms.filter(f => f.status === 'PUBLISHED').length} Published</span>
+            <span>{publishedCount ?? forms.filter(f => f.status === 'PUBLISHED').length} Published</span>
             <span>•</span>
-            <span>{forms.filter(f => f.status === 'DRAFT').length} Drafts</span>
+            <span>{draftCount ?? forms.filter(f => f.status === 'DRAFT').length} Drafts</span>
             <span>•</span>
-            <span>{forms.filter(f => f.status === 'CLOSED').length} Closed</span>
+            <span>{closedCount ?? forms.filter(f => f.status === 'CLOSED').length} Closed</span>
           </div>
         </div>
 

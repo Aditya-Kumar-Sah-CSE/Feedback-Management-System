@@ -75,6 +75,16 @@ export default async function FeedbackFormDetailPage({
     }
   }
 
+  // Tenant authorization & boundary check
+  if (!session.isPlatformSuperAdmin && form?.college_id) {
+    const isAuthorized = session.colleges.some(
+      (c) => c.collegeId === form.college_id && c.status === 'ACTIVE'
+    );
+    if (!isAuthorized || (session.activeCollegeId && form.college_id !== session.activeCollegeId)) {
+      redirect('/admin/dashboard/forms');
+    }
+  }
+
   // Fetch form items if multi-faculty
   const { data: formItems } = await supabase
     .from('feedback_form_items')

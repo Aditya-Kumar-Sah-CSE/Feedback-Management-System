@@ -221,8 +221,8 @@ export const getCollegeEntitlements = cache(async (collegeId: string): Promise<C
   // 6. Capability flags (derived strictly from effectiveFeatures)
   const hasFormGeneration = planHasFeature(effectiveFeatures, FEATURE_GOOGLE_FORM_GENERATION);
   const hasSheetIntegration = planHasFeature(effectiveFeatures, FEATURE_GOOGLE_SHEET_INTEGRATION);
-  const hasBasicAnalytics = planHasFeature(effectiveFeatures, FEATURE_BASIC_ANALYTICS);
-  const hasFullAnalytics = planHasFeature(effectiveFeatures, FEATURE_FULL_ANALYTICS_ACCESS);
+  const hasBasicAnalytics = true;
+  const hasFullAnalytics = true; // Unlocked across all colleges for complete institutional results, charts, and analytics
   const hasPdfAccess = true; // Enabled across all colleges for full institutional, faculty, and response PDF exports
 
   const isUnlocked = hasFormGeneration;
@@ -320,8 +320,8 @@ function createEmptyLockedEntitlements(collegeId: string): CollegeEntitlements {
     hasFormGeneration: false,
     hasSheetIntegration: false,
     hasBasicAnalytics: true,
-    hasFullAnalytics: false,
-    hasPdfAccess: false,
+    hasFullAnalytics: true,
+    hasPdfAccess: true,
     accessStatus: 'LOCKED',
     subscriptionStatus: 'EXPIRED',
     isExpired: true,

@@ -96,7 +96,7 @@ export default async function FeedbackPortalPage() {
           <div>
             <span>Bhagalpur College of Engineering (BCE Bhagalpur) • Official Student Evaluation Portal</span>
             <div className="text-[11px] text-slate-400 mt-1">
-              Developed by{' '}
+              Designed & Developed by{' '}
               <a
                 href="https://portfolio-two-ashen-zseywond41.vercel.app/"
                 target="_blank"
@@ -112,8 +112,18 @@ export default async function FeedbackPortalPage() {
                 rel="noopener noreferrer"
                 className="text-slate-400 hover:text-slate-200 hover:underline transition-colors"
               >
-                Portfolio
+                Developer Portfolio
               </a>
+              {' '}under the guidance of{' '}
+              <a
+                href="https://www.bcebhagalpur.ac.in/faculty/abhinav-kumar/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-amber-400 hover:underline font-medium"
+              >
+                Dr. Abhinav Kumar
+              </a>
+              {' '}(Assistant Professor)
             </div>
           </div>
           <div className="flex items-center gap-3">

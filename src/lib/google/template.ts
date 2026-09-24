@@ -84,6 +84,7 @@ export const PUBLIC_FEEDBACK_PORTAL_URL =
   process.env.NEXT_PUBLIC_APP_URL || CANONICAL_PUBLIC_PORTAL_URL;
 
 export const ADITYA_PORTFOLIO_URL = 'https://portfolio-two-ashen-zseywond41.vercel.app/';
+export const DR_ABHINAV_KUMAR_PROFILE_URL = 'https://www.bcebhagalpur.ac.in/faculty/abhinav-kumar/';
 
 /**
  * Returns dynamic tenant-aware portal link (e.g. https://.../bce-bgp or https://.../gec-gaya)
@@ -108,10 +109,11 @@ Need to access more academic feedback forms?
 Visit:
 ${portalUrl}
 
-Developer: Aditya Kumar Sah
+Designed & Developed by: Aditya Kumar Sah
+Developer Portfolio: ${ADITYA_PORTFOLIO_URL}
 
-Portfolio:
-${ADITYA_PORTFOLIO_URL}`;
+Under the guidance of: Dr. Abhinav Kumar (Assistant Professor)
+Faculty Profile: ${DR_ABHINAV_KUMAR_PROFILE_URL}`;
 }
 
 export const FORM_CONFIRMATION_MESSAGE = getFormConfirmationMessage();

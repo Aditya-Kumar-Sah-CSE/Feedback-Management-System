@@ -90,6 +90,16 @@ export default async function HomePage() {
               >
                 Developer Portfolio
               </a>
+              {' '}under the guidance of{' '}
+              <a
+                href="https://www.bcebhagalpur.ac.in/faculty/abhinav-kumar/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+              >
+                Dr. Abhinav Kumar
+              </a>
+              {' '}(Assistant Professor)
             </p>
           </div>
           <div className="flex items-center gap-4 text-[11px] text-slate-500">

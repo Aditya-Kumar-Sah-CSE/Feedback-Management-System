@@ -120,7 +120,27 @@ export default async function AdminDashboardLayout({
       {/* Admin Footer */}
       <footer className="bg-white border-t border-slate-200 py-4 px-3 sm:px-4 text-center text-xs text-slate-500 mt-auto w-full min-w-0">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-2">
-          <span>BCE Faculty Feedback Management System • Phase 1 Foundation</span>
+          <span>
+            Institutional Feedback Management System • Designed & Developed by{' '}
+            <a
+              href="https://portfolio-two-ashen-zseywond41.vercel.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-bce-cobalt hover:underline"
+            >
+              Aditya Kumar Sah
+            </a>
+            {' '}under the guidance of{' '}
+            <a
+              href="https://www.bcebhagalpur.ac.in/faculty/abhinav-kumar/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-bce-cobalt hover:underline"
+            >
+              Dr. Abhinav Kumar
+            </a>
+            {' '}(Assistant Professor)
+          </span>
           <span className="truncate max-w-full">Authenticated as: <strong className="text-slate-700 font-mono">{adminEmail}</strong></span>
         </div>
       </footer>
