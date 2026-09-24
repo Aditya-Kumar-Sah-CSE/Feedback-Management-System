@@ -187,13 +187,16 @@ export async function getFormResponsesAction(
     }
   }
 
-  // 2. Auto-sync if records table is empty but Google is configured
+  // 2. Auto-sync if records table is empty or stale (>30s since last sync) and Google is configured
   const { count: currentRecordCount } = await supabase
     .from('feedback_response_records')
     .select('id', { count: 'exact', head: true })
     .eq('form_id', formId);
 
-  if ((currentRecordCount === 0 || currentRecordCount === null) && isGoogleConfigured()) {
+  const lastSyncedTime = form.last_synced_at ? new Date(form.last_synced_at).getTime() : 0;
+  const isStale = Date.now() - lastSyncedTime > 30 * 1000;
+
+  if ((currentRecordCount === 0 || currentRecordCount === null || isStale) && isGoogleConfigured()) {
     const resolvedFormId =
       form.google_form_id ||
       form.google_form_edit_url?.match(/\/forms\/d\/([a-zA-Z0-9_-]+)/)?.[1] ||

@@ -490,6 +490,28 @@ export function FormDetailConsole({
                   : 'Click "Sync Responses Now" to fetch submitted responses from the official Google Forms API and append them into the formatted Google Sheet. Duplicate submissions are automatically detected and skipped.'}
               </p>
             </div>
+
+            {!isNative && form.google_form_edit_url && (
+              <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold flex items-center gap-1.5 text-amber-950">
+                    💡 Enable Instant Real-Time Auto-Sync in Google Forms
+                  </span>
+                  <a
+                    href={form.google_form_edit_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[11px] font-bold transition-colors shadow-xs"
+                  >
+                    <span>Open Form in Google</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+                <p className="text-[11px] text-amber-800 leading-relaxed">
+                  To stream student submissions automatically into Google Sheets without clicking &quot;Sync Responses&quot;: open the Google Form above &rarr; go to the <strong>Responses</strong> tab &rarr; click <strong>Link to Sheets</strong> &rarr; choose <strong>Select existing spreadsheet</strong> and select this form&apos;s sheet.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Standard 8 BCE Evaluation Parameters */}

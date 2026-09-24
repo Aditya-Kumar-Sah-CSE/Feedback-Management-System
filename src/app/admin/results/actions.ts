@@ -46,7 +46,7 @@ export async function getFormAnalyticsAction(
   const supabase = options?.client || (await createClient());
   const { data: formRecord, error: formError } = await supabase
     .from('feedback_forms')
-    .select('id, college_id')
+    .select('id, college_id, google_form_id, google_sheet_id, google_form_url, google_form_edit_url, google_sheet_url, last_synced_at')
     .eq('id', formId)
     .single();
 
@@ -76,6 +76,32 @@ export async function getFormAnalyticsAction(
       code: 'ANALYTICS_UPGRADE_REQUIRED',
       error: access.reason || 'Full analytics access required. Please upgrade your plan.',
     };
+  }
+
+  // 5. Auto-sync if stale (>30s) so analytics calculates fresh student submissions
+  const lastSyncedTime = formRecord.last_synced_at ? new Date(formRecord.last_synced_at).getTime() : 0;
+  if ((Date.now() - lastSyncedTime > 30 * 1000) && isGoogleConfigured()) {
+    const resolvedFormId =
+      formRecord.google_form_id ||
+      formRecord.google_form_edit_url?.match(/\/forms\/d\/([a-zA-Z0-9_-]+)/)?.[1] ||
+      formRecord.google_form_url?.match(/\/forms\/d\/([a-zA-Z0-9_-]+)/)?.[1];
+    const resolvedSheetId =
+      formRecord.google_sheet_id ||
+      formRecord.google_sheet_url?.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/)?.[1];
+
+    if (resolvedFormId && resolvedSheetId) {
+      try {
+        await syncFormResponsesToSheet({
+          googleFormId: resolvedFormId,
+          googleSheetId: resolvedSheetId,
+          formId,
+          callerSession: session,
+          skipAuthCheck: true,
+        });
+      } catch (syncErr) {
+        console.warn('Auto-sync in getFormAnalyticsAction encountered an issue:', syncErr);
+      }
+    }
   }
 
   return getFormAnalyticsData(formId, options);

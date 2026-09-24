@@ -4,6 +4,8 @@ import { createClient } from '@/lib/supabase/server';
 import { FeedbackForm, AuditLog } from '@/types/database';
 import { FormDetailConsole } from '@/components/admin/forms/FormDetailConsole';
 import { assertAnalyticsAccess } from '@/lib/billing/access-control';
+import { syncFormResponsesToSheet } from '@/lib/google/sync';
+import { isGoogleConfigured } from '@/lib/google/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -98,6 +100,38 @@ export default async function FeedbackFormDetailPage({
 
   if (form) {
     form.items = formItems || [];
+  }
+
+  // Auto-sync responses if stale (>30s)
+  if (form && isGoogleConfigured()) {
+    const lastSyncedTime = form.last_synced_at ? new Date(form.last_synced_at).getTime() : 0;
+    if (Date.now() - lastSyncedTime > 30 * 1000) {
+      const resolvedFormId =
+        form.google_form_id ||
+        form.google_form_edit_url?.match(/\/forms\/d\/([a-zA-Z0-9_-]+)/)?.[1] ||
+        form.google_form_url?.match(/\/forms\/d\/([a-zA-Z0-9_-]+)/)?.[1];
+      const resolvedSheetId =
+        form.google_sheet_id ||
+        form.google_sheet_url?.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/)?.[1];
+
+      if (resolvedFormId && resolvedSheetId) {
+        try {
+          const syncRes = await syncFormResponsesToSheet({
+            googleFormId: resolvedFormId,
+            googleSheetId: resolvedSheetId,
+            formId: id,
+            callerSession: session,
+            skipAuthCheck: true,
+          });
+          if (syncRes.success) {
+            form.response_count = syncRes.totalResponses;
+            form.last_synced_at = new Date().toISOString();
+          }
+        } catch (syncErr) {
+          console.warn('Auto-sync on form detail page load notice:', syncErr);
+        }
+      }
+    }
   }
 
   // Fetch audit logs for this form
