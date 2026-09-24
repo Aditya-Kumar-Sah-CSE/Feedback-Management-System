@@ -1143,7 +1143,7 @@ export function AcademicManagementTab({
 
           {/* Edit Faculty Modal */}
           {editingFaculty && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
               <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150">
                 <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                   <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
@@ -1486,7 +1486,7 @@ export function AcademicManagementTab({
 
           {/* Edit Subject Modal */}
           {editingSubject && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
               <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150">
                 <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                   <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
@@ -1842,7 +1842,7 @@ export function AcademicManagementTab({
 
           {/* Edit Assignment Modal */}
           {editingAssignment && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
               <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150">
                 <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                   <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
@@ -2189,7 +2189,7 @@ export function AcademicManagementTab({
 
           {/* Edit Branch Modal */}
           {editingBranch && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
               <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150">
                 <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                   <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
@@ -2269,7 +2269,7 @@ export function AcademicManagementTab({
 
           {/* Delete Branch Confirmation Modal */}
           {deletingBranch && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
               <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150">
                 <div className="p-4 bg-rose-50 border-b border-rose-100 flex items-center justify-between">
                   <h4 className="text-sm font-bold text-rose-900 flex items-center gap-1.5">
@@ -2555,7 +2555,7 @@ export function AcademicManagementTab({
 
           {/* Delete Semester Confirmation Modal */}
           {deletingSemester && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
               <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150">
                 <div className="p-4 bg-rose-50 border-b border-rose-100 flex items-center justify-between">
                   <h4 className="text-sm font-bold text-rose-900 flex items-center gap-1.5">

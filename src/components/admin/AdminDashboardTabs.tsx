@@ -563,7 +563,7 @@ export function AdminDashboardTabs({
       )}
 
       {/* Tab Panels */}
-      <div className="relative z-10 w-full max-w-full min-w-0">
+      <div className="relative w-full max-w-full min-w-0">
         {activeTab === 'overview' && (
           <OverviewTab
             academicYears={academicYears}
