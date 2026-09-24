@@ -104,7 +104,7 @@ export interface FormAnalyticsReport {
   validResponses: number;
   unansweredResponses: number;
   parameterAverageScore: number; // 1.00 to 5.00: Mean across evaluation parameters Q1-Q7 (e.g. 2.71)
-  averageOverallScore: number; // 1.00 to 5.00: Canonical Overall Rating Q8 (e.g. 3.00)
+  averageOverallScore: number; // 1.00 to 5.00: Overall mean across all parameters (e.g. 20/8 = 2.50)
   compositeAverageScore: number; // Mean across all parameters (backward compatibility)
   performanceGrade: PerformanceGrade;
   performanceGradeInfo?: PerformanceGradeInfo;

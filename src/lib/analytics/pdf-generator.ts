@@ -33,10 +33,39 @@ function streamToBuffer(doc: PDFKit.PDFDocument): Promise<Buffer> {
   });
 }
 
+const logoBufferCache = new Map<string, { buffer: Buffer; timestamp: number }>();
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+async function fetchLogoBuffer(url?: string | null): Promise<Buffer | null> {
+  if (!url || typeof url !== 'string' || !url.startsWith('http')) return null;
+
+  const cached = logoBufferCache.get(url);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.buffer;
+  }
+
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
+    if (!res.ok) return null;
+    const ab = await res.arrayBuffer();
+    const buffer = Buffer.from(ab);
+    logoBufferCache.set(url, { buffer, timestamp: Date.now() });
+    return buffer;
+  } catch (err) {
+    console.warn('[PDF] Failed to load logo from URL:', url, err);
+    return null;
+  }
+}
+
 /**
- * Draws standardized multi-tenant Header banner
+ * Draws standardized multi-tenant Header banner with top-left institution logo
  */
-function drawHeader(doc: PDFKit.PDFDocument, subtitle: string, branding?: CollegeBranding) {
+function drawHeader(
+  doc: PDFKit.PDFDocument,
+  subtitle: string,
+  branding?: CollegeBranding,
+  logoBuffer?: Buffer | null
+) {
   const pageWidth = 595.28; // A4 width in pt
   const margin = 36;
   const contentWidth = pageWidth - margin * 2;
@@ -47,6 +76,37 @@ function drawHeader(doc: PDFKit.PDFDocument, subtitle: string, branding?: Colleg
 
   // Top decorative color bar
   doc.rect(margin, 30, contentWidth, 5).fill(accentColor);
+
+  // Top-left institution logo or fallback emblem
+  const logoX = margin;
+  const logoY = 38;
+  const logoSize = 48;
+
+  if (logoBuffer) {
+    try {
+      doc.image(logoBuffer, logoX, logoY, {
+        fit: [logoSize, logoSize],
+        align: 'center',
+        valign: 'center',
+      });
+    } catch (e) {
+      console.warn('[PDF] Failed to draw logo image:', e);
+    }
+  } else {
+    // Elegant fallback emblem with institution code
+    doc
+      .roundedRect(logoX, logoY, logoSize, logoSize, 6)
+      .fillAndStroke(COLORS.bgLight, COLORS.border);
+
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(10)
+      .fillColor(primaryColor)
+      .text((brand.code || 'COL').slice(0, 4), logoX, logoY + 18, {
+        width: logoSize,
+        align: 'center',
+      });
+  }
 
   // Institution Header
   const institutionName = (brand.name || DEFAULT_BRANDING.name).toUpperCase();
@@ -350,8 +410,11 @@ export async function generateIndividualFacultyPDF(
   const pageWidth = 595.28;
   const contentWidth = pageWidth - margin * 2;
 
+  // Fetch top-left logo buffer
+  const logoBuffer = await fetchLogoBuffer(brand.logoUrl);
+
   // Page 1 Header
-  drawHeader(doc, 'Faculty Feedback Evaluation Report', brand);
+  drawHeader(doc, 'Faculty Feedback Evaluation Report', brand, logoBuffer);
 
   let currentY = 104;
 
@@ -589,19 +652,23 @@ export async function generateIndividualFacultyPDF(
   if (sortedParams.length > 0) {
     const highest = sortedParams[0];
     const lowest = sortedParams[sortedParams.length - 1];
+    const obsWidth = contentWidth - 28;
 
-    doc.text(`• Highest Rated Parameter: "${highest.title}" with a weighted score of ${highest.averageScore.toFixed(2)}/5.00 (${highest.excellentPct}% Excellent, ${highest.veryGoodPct}% Very Good).`, margin + 14, obsY);
-    obsY += 11;
+    const line1 = `• Highest Rated Parameter: "${highest.title}" with a weighted score of ${highest.averageScore.toFixed(2)}/5.00 (${highest.excellentPct}% Excellent, ${highest.veryGoodPct}% Very Good).`;
+    doc.text(line1, margin + 14, obsY, { width: obsWidth });
+    obsY += doc.heightOfString(line1, { width: obsWidth }) + 3;
 
-    doc.text(`• Area for Academic Attention: "${lowest.title}" scored ${lowest.averageScore.toFixed(2)}/5.00 (${lowest.unsatisfactoryPct}% Unsatisfactory).`, margin + 14, obsY);
-    obsY += 11;
+    const line2 = `• Area for Academic Attention: "${lowest.title}" scored ${lowest.averageScore.toFixed(2)}/5.00 (${lowest.unsatisfactoryPct}% Unsatisfactory).`;
+    doc.text(line2, margin + 14, obsY, { width: obsWidth });
+    obsY += doc.heightOfString(line2, { width: obsWidth }) + 3;
 
-    doc.text(`• Overall Feedback Satisfaction: ${(report.distribution.excellentPct + report.distribution.veryGoodPct + report.distribution.goodPct).toFixed(1)}% of all individual ratings were Excellent, Very Good or Good.`, margin + 14, obsY);
-    obsY += 11;
+    const line3 = `• Overall Feedback Satisfaction: ${(report.distribution.excellentPct + report.distribution.veryGoodPct + report.distribution.goodPct).toFixed(1)}% of all individual ratings were Excellent, Very Good or Good.`;
+    doc.text(line3, margin + 14, obsY, { width: obsWidth });
+    obsY += doc.heightOfString(line3, { width: obsWidth }) + 3;
 
-    doc.text(`• Sample Reliability: Total valid student submissions evaluated: ${report.validResponses} (${report.unansweredResponses} incomplete/unanswered).`, margin + 14, obsY);
-    obsY += 11;
-
+    const line4 = `• Sample Reliability: Total valid student submissions evaluated: ${report.validResponses} (${report.unansweredResponses} incomplete/unanswered).`;
+    doc.text(line4, margin + 14, obsY, { width: obsWidth });
+    obsY += doc.heightOfString(line4, { width: obsWidth }) + 3;
   }
 
   // Bottom-Right Signature Block
@@ -644,8 +711,11 @@ export async function generateOverallFeedbackPDF(
   const pageWidth = 595.28;
   const contentWidth = pageWidth - margin * 2;
 
+  // Fetch top-left logo buffer
+  const logoBuffer = await fetchLogoBuffer(brand.logoUrl);
+
   // Header
-  drawHeader(doc, 'Institutional Feedback Analytics Report', brand);
+  drawHeader(doc, 'Institutional Feedback Analytics Report', brand, logoBuffer);
 
   let currentY = 104;
 
@@ -899,8 +969,11 @@ export async function generateSemesterComparativePDF(
   const contentWidth = pageWidth - margin * 2;
   let currentPage = 1;
 
+  // Fetch top-left logo buffer
+  const logoBuffer = await fetchLogoBuffer(brand.logoUrl);
+
   // Header
-  drawHeader(doc, 'Semester Feedback Comparative Evaluation Report', brand);
+  drawHeader(doc, 'Semester Feedback Comparative Evaluation Report', brand, logoBuffer);
 
   let currentY = 104;
 
@@ -1069,7 +1142,7 @@ export async function generateSemesterComparativePDF(
     drawFooter(doc, currentPage, 2, brand);
     doc.addPage();
     currentPage = 2;
-    drawHeader(doc, 'Semester Feedback Comparative Evaluation Report', brand);
+    drawHeader(doc, 'Semester Feedback Comparative Evaluation Report', brand, logoBuffer);
     currentY = 104;
   }
 
@@ -1278,8 +1351,11 @@ export async function generateStudentResponsePDF(
 
   let currentPage = 1;
 
+  // Fetch top-left logo buffer
+  const logoBuffer = await fetchLogoBuffer(brand.logoUrl);
+
   // Header
-  drawHeader(doc, 'Student Feedback Submission Record', brand);
+  drawHeader(doc, 'Student Feedback Submission Record', brand, logoBuffer);
 
   let currentY = 104;
 
@@ -1367,7 +1443,7 @@ export async function generateStudentResponsePDF(
       drawFooter(doc, currentPage, currentPage, brand); // Note: estimated total
       doc.addPage();
       currentPage++;
-      drawHeader(doc, 'Student Feedback Submission Record', brand);
+      drawHeader(doc, 'Student Feedback Submission Record', brand, logoBuffer);
       currentY = 104;
     }
 
@@ -1429,7 +1505,7 @@ export async function generateStudentResponsePDF(
       drawFooter(doc, currentPage, currentPage, brand);
       doc.addPage();
       currentPage++;
-      drawHeader(doc, 'Student Feedback Submission Record', brand);
+      drawHeader(doc, 'Student Feedback Submission Record', brand, logoBuffer);
       currentY = 104;
     }
 

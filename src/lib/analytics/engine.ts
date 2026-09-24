@@ -349,13 +349,8 @@ export function calculateFormAnalytics(params: {
     totalAllRatingsCount > 0 ? Number(((compositeAverageScore / 5) * 100).toFixed(2)) : 0;
 
   // Canonical Overall Rating:
-  // Uses Question 8 if present and valid; falls back to parameterAverageScore or compositeAverageScore
-  const averageOverallScore =
-    param8 && param8.validCount > 0
-      ? param8.averageScore
-      : parameterAverageScore > 0
-      ? parameterAverageScore
-      : compositeAverageScore;
+  // Strictly the composite average across all evaluated parameters (e.g. 20 / 8 = 2.50)
+  const averageOverallScore = compositeAverageScore;
 
   const performanceGrade = calculatePerformanceGrade(averageOverallScore, hasData);
   const performanceGradeInfo = getPerformanceGradeInfo(averageOverallScore, hasData);
@@ -587,13 +582,8 @@ export function aggregateAnalytics(
     totalAllRatings > 0 ? Number((totalAllScores / totalAllRatings).toFixed(2)) : 0;
 
   // Canonical Overall Rating:
-  // Uses Question 8 if present and valid; falls back to parameterAverageScore or compositeAverageScore
-  const averageOverallScore =
-    param8 && param8.validCount > 0
-      ? param8.averageScore
-      : parameterAverageScore > 0
-      ? parameterAverageScore
-      : compositeAverageScore;
+  // Strictly the composite average across all evaluated parameters
+  const averageOverallScore = compositeAverageScore;
 
   let totalStudents = 0;
   let evaluatedItems = 0;
