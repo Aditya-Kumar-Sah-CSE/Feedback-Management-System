@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { Download, X, Share, PlusSquare, School } from 'lucide-react';
 
 interface BeforeInstallPromptEvent extends Event {
@@ -8,10 +9,25 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 }
 
-const DISMISS_KEY = 'bce_pwa_install_dismissed_at';
+const DISMISS_KEY = 'fms_global_pwa_install_dismissed_at';
 const DISMISS_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
+const RESERVED_PREFIXES = [
+  'admin',
+  'api',
+  'auth',
+  'offline',
+  'favicon.ico',
+  'privacy-policy',
+  'terms-of-service',
+  'google63a0b427ff26a6fc.html',
+];
+
 export function PwaInstallPrompt() {
+  const pathname = usePathname();
+  const segments = (pathname || '').split('/').filter(Boolean);
+  const firstSegment = segments[0]?.toLowerCase();
+  const isTenantRoute = Boolean(firstSegment && !RESERVED_PREFIXES.includes(firstSegment));
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isIos, setIsIos] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
@@ -93,7 +109,7 @@ export function PwaInstallPrompt() {
     localStorage.setItem(DISMISS_KEY, Date.now().toString());
   };
 
-  if (isStandalone || !showPrompt) {
+  if (isTenantRoute || isStandalone || !showPrompt) {
     return null;
   }
 

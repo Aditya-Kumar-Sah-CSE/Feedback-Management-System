@@ -4,6 +4,7 @@ import { getCachedAcademicMasters } from '@/lib/supabase/academic-cache';
 import { getPublicActiveFormsAction } from '@/app/feedback/actions';
 import { StudentDiscoveryFlow } from '@/components/public/StudentDiscoveryFlow';
 import { AllFeedbackFormsSection } from '@/components/public/AllFeedbackFormsSection';
+import { CollegeInstallButton } from '@/components/pwa/CollegeInstallButton';
 import { School, ArrowLeft, ShieldCheck, GraduationCap } from 'lucide-react';
 import type { AcademicYear, Branch, Semester } from '@/types/database';
 
@@ -71,10 +72,13 @@ export default async function TenantFeedbackPortalPage({ params }: TenantFeedbac
             </div>
           </Link>
 
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 px-2.5 sm:px-3 py-1.5 rounded-full border border-emerald-200 shrink-0">
-            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span className="hidden sm:inline">100% Anonymous • No Login Required</span>
-            <span className="sm:hidden text-[11px]">100% Anonymous</span>
+          <div className="flex items-center gap-2">
+            <CollegeInstallButton tenant={tenant} />
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 px-2.5 sm:px-3 py-1.5 rounded-full border border-emerald-200 shrink-0">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="hidden sm:inline">100% Anonymous • No Login Required</span>
+              <span className="sm:hidden text-[11px]">100% Anonymous</span>
+            </div>
           </div>
         </div>
       </header>

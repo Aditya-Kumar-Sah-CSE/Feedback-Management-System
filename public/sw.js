@@ -64,9 +64,10 @@ self.addEventListener('fetch', (event) => {
   const pathname = url.pathname;
 
   // 3. Security Exclusion: NEVER cache admin console, internal APIs, or auth endpoints.
+  // Note: /api/manifest/* is exempted so manifests can be cached and served offline
   if (
     pathname.startsWith('/admin') ||
-    pathname.startsWith('/api') ||
+    (pathname.startsWith('/api') && !pathname.startsWith('/api/manifest')) ||
     pathname.startsWith('/auth') ||
     pathname.includes('/response/') ||
     pathname.includes('token')
@@ -74,9 +75,10 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 4. Static immutable Next.js assets (_next/static, fonts, icons)
+  // 4. Static immutable Next.js assets (_next/static, fonts, icons, manifests)
   if (
     pathname.startsWith('/_next/static/') ||
+    pathname.startsWith('/api/manifest') ||
     pathname.match(/\.(png|jpe?g|svg|ico|woff2?|webp|webmanifest)$/i)
   ) {
     event.respondWith(

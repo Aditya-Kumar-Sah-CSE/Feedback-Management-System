@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Share2, School, Building2, Check, CheckCircle2, MapPin } from 'lucide-react';
+import { ArrowRight, Share2, School, Building2, Check, CheckCircle2, MapPin, Download } from 'lucide-react';
 import type { TenantContext } from '@/types/tenant';
 
 interface CollegeGridProps {
@@ -121,19 +121,30 @@ export function CollegeGrid({ colleges }: CollegeGridProps) {
                   <ArrowRight className="w-3.5 h-3.5 group-hover/btn:translate-x-0.5 transition-transform" />
                 </Link>
 
-                <button
-                  type="button"
-                  onClick={() => handleShare(college)}
-                  className="p-1.5 sm:p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
-                  aria-label={`Share ${college.name} portal link`}
-                  title={`Share ${college.name} Portal`}
-                >
-                  {isCopied ? (
-                    <Check className="w-4 h-4 text-emerald-600" />
-                  ) : (
-                    <Share2 className="w-4 h-4" />
-                  )}
-                </button>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Link
+                    href={`/${college.slug}?install=true`}
+                    className="p-1.5 sm:p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 group/pwa relative"
+                    aria-label={`Install ${college.name} App (PWA)`}
+                    title={`Install ${college.shortName || college.name} App (PWA)`}
+                  >
+                    <Download className="w-4 h-4 group-hover/pwa:scale-110 transition-transform" />
+                  </Link>
+
+                  <button
+                    type="button"
+                    onClick={() => handleShare(college)}
+                    className="p-1.5 sm:p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                    aria-label={`Share ${college.name} portal link`}
+                    title={`Share ${college.name} Portal`}
+                  >
+                    {isCopied ? (
+                      <Check className="w-4 h-4 text-emerald-600" />
+                    ) : (
+                      <Share2 className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           );

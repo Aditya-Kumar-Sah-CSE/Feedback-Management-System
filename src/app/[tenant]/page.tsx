@@ -4,6 +4,7 @@ import { getCachedAcademicMasters } from '@/lib/supabase/academic-cache';
 import { getPublicActiveFormsAction } from '@/app/feedback/actions';
 import { StudentDiscoveryFlow } from '@/components/public/StudentDiscoveryFlow';
 import { AllFeedbackFormsSection } from '@/components/public/AllFeedbackFormsSection';
+import { CollegeInstallButton } from '@/components/pwa/CollegeInstallButton';
 import { School, UserCheck, ArrowRight, ExternalLink } from 'lucide-react';
 import type { Branch, AcademicYear, Semester } from '@/types/database';
 
@@ -85,6 +86,7 @@ export default async function TenantHomePage({ params }: TenantPageProps) {
           </div>
 
           <div className="flex items-center gap-2">
+            <CollegeInstallButton tenant={tenant} />
             <Link
               href={`/${tenant.slug}/feedback`}
               className="hidden md:inline-flex items-center px-3 py-1.5 text-xs font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
