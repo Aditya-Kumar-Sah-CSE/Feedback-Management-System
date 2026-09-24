@@ -99,15 +99,15 @@ export function AllFeedbackFormsSection({ initialData, collegeId }: Props) {
   };
 
   return (
-    <section className="space-y-6 pt-6 border-t border-slate-200">
+    <section className="space-y-4 sm:space-y-6 pt-4 sm:pt-6 border-t border-slate-200">
       {/* Section Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-semibold mb-1.5">
             <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
             <span>Open Submissions</span>
           </div>
-          <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+          <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
             All Feedback Forms
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
@@ -123,19 +123,19 @@ export function AllFeedbackFormsSection({ initialData, collegeId }: Props) {
             placeholder="Search active forms..."
             value={search}
             onChange={e => handleSearchChange(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 sm:py-2 min-h-[44px] rounded-xl bg-white border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-base sm:text-xs text-slate-800 placeholder-slate-400 shadow-xs outline-none transition-all"
+            className="w-full pl-9 pr-4 py-2 sm:py-2 min-h-[42px] sm:min-h-[44px] rounded-xl bg-white border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-base sm:text-xs text-slate-800 placeholder-slate-400 shadow-xs outline-none transition-all"
           />
         </div>
       </div>
 
       {/* Forms Cards Grid */}
       {isPending ? (
-        <div className="py-16 text-center">
+        <div className="py-12 sm:py-16 text-center">
           <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mx-auto mb-2" />
           <p className="text-xs text-slate-500 font-medium">Updating forms list...</p>
         </div>
       ) : data.forms.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-xs">
+        <div className="bg-white rounded-2xl border border-slate-200 p-8 sm:p-12 text-center shadow-xs">
           <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 mx-auto mb-3">
             <Layers className="w-6 h-6" />
           </div>
@@ -147,14 +147,14 @@ export function AllFeedbackFormsSection({ initialData, collegeId }: Props) {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
           {data.forms.map(form => {
             const isSemester = form.formType === 'SEMESTER_FEEDBACK';
 
             return (
               <div
                 key={form.id}
-                className="bg-white rounded-2xl border border-slate-200 hover:border-indigo-300 hover:shadow-md transition-all p-5 flex flex-col justify-between group shadow-xs relative overflow-hidden"
+                className="bg-white rounded-2xl border border-slate-200 hover:border-indigo-300 hover:shadow-md transition-all p-3.5 sm:p-5 flex flex-col justify-between group shadow-xs relative overflow-hidden"
               >
                 {/* Accent Top Border */}
                 <div
@@ -165,11 +165,11 @@ export function AllFeedbackFormsSection({ initialData, collegeId }: Props) {
                   }`}
                 />
 
-                <div className="space-y-3.5">
+                <div className="space-y-2.5 sm:space-y-3.5">
                   {/* Card Badges */}
                   <div className="flex items-center justify-between gap-2 pt-1">
                     <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                      className={`inline-flex items-center px-2 sm:px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                         isSemester
                           ? 'bg-purple-50 text-purple-700 border border-purple-200'
                           : 'bg-blue-50 text-blue-700 border border-blue-200'
@@ -178,7 +178,7 @@ export function AllFeedbackFormsSection({ initialData, collegeId }: Props) {
                       {isSemester ? 'Semester Feedback' : 'Faculty Feedback'}
                     </span>
 
-                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                    <span className="inline-flex items-center gap-1 text-[10.5px] sm:text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                       Active
                     </span>
@@ -192,9 +192,9 @@ export function AllFeedbackFormsSection({ initialData, collegeId }: Props) {
                   </div>
 
                   {/* Academic Metadata Pills */}
-                  <div className="space-y-2 text-xs text-slate-600 border-t border-slate-100 pt-3">
+                  <div className="space-y-1.5 sm:space-y-2 text-xs text-slate-600 border-t border-slate-100 pt-2.5 sm:pt-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-400 text-[11px] flex items-center gap-1.5">
+                      <span className="text-slate-400 text-[10.5px] sm:text-[11px] flex items-center gap-1.5">
                         <Building2 className="w-3.5 h-3.5 text-slate-400" />
                         Branch / Dept
                       </span>
@@ -202,7 +202,7 @@ export function AllFeedbackFormsSection({ initialData, collegeId }: Props) {
                     </div>
 
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-400 text-[11px] flex items-center gap-1.5">
+                      <span className="text-slate-400 text-[10.5px] sm:text-[11px] flex items-center gap-1.5">
                         <GraduationCap className="w-3.5 h-3.5 text-slate-400" />
                         Semester Level
                       </span>
@@ -210,7 +210,7 @@ export function AllFeedbackFormsSection({ initialData, collegeId }: Props) {
                     </div>
 
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-400 text-[11px] flex items-center gap-1.5">
+                      <span className="text-slate-400 text-[10.5px] sm:text-[11px] flex items-center gap-1.5">
                         <Calendar className="w-3.5 h-3.5 text-slate-400" />
                         Session
                       </span>
@@ -218,11 +218,11 @@ export function AllFeedbackFormsSection({ initialData, collegeId }: Props) {
                     </div>
 
                     <div className="flex items-start justify-between gap-2 pt-1 border-t border-slate-50">
-                      <span className="text-slate-400 text-[11px] flex items-center gap-1.5 shrink-0 mt-0.5">
+                      <span className="text-slate-400 text-[10.5px] sm:text-[11px] flex items-center gap-1.5 shrink-0 mt-0.5">
                         <User className="w-3.5 h-3.5 text-slate-400" />
                         Evaluation Target
                       </span>
-                      <span className="font-semibold text-slate-900 text-right text-[11px] line-clamp-2">
+                      <span className="font-semibold text-slate-900 text-right text-[10.5px] sm:text-[11px] line-clamp-2">
                         {form.facultySubjectDisplay}
                       </span>
                     </div>
@@ -242,13 +242,13 @@ export function AllFeedbackFormsSection({ initialData, collegeId }: Props) {
                 </div>
 
                 {/* Card Action */}
-                <div className="pt-4 mt-3 border-t border-slate-100">
+                <div className="pt-3 sm:pt-4 mt-2.5 sm:mt-3 border-t border-slate-100">
                   {form.googleFormUrl ? (
                     <a
                       href={form.googleFormUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-bce-navy hover:bg-slate-800 text-white font-bold text-xs transition-all shadow-xs group-hover:shadow-md"
+                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 sm:py-2.5 rounded-xl bg-bce-navy hover:bg-slate-800 text-white font-bold text-xs transition-all shadow-xs group-hover:shadow-md"
                     >
                       <span>Start Feedback</span>
                       <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
@@ -256,7 +256,7 @@ export function AllFeedbackFormsSection({ initialData, collegeId }: Props) {
                   ) : (
                     <button
                       disabled
-                      className="w-full px-4 py-2.5 rounded-xl bg-slate-100 text-slate-400 text-xs font-medium cursor-not-allowed text-center"
+                      className="w-full px-4 py-2 sm:py-2.5 rounded-xl bg-slate-100 text-slate-400 text-xs font-medium cursor-not-allowed text-center"
                     >
                       Form URL Unavailable
                     </button>
@@ -270,7 +270,7 @@ export function AllFeedbackFormsSection({ initialData, collegeId }: Props) {
 
       {/* Pagination Bar */}
       {data.totalPages > 1 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 bg-white rounded-2xl border border-slate-200 shadow-xs text-xs text-slate-600 text-center sm:text-left">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 p-3 sm:p-4 bg-white rounded-2xl border border-slate-200 shadow-xs text-xs text-slate-600 text-center sm:text-left">
           <div>
             Showing Page <span className="font-bold text-slate-900">{currentPage}</span> of{' '}
             <span className="font-bold text-slate-900">{data.totalPages}</span> ({data.totalCount} active forms)

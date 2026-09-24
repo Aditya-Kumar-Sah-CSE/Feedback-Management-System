@@ -171,9 +171,9 @@ export function ResultsDashboardClient({
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Page Title & Scope Card */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+      <div className="bg-white p-3.5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3 sm:space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
@@ -385,9 +385,9 @@ export function ResultsDashboardClient({
       </div>
 
       {/* KPI Metric Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         {/* Total Forms */}
-        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="bg-white p-3 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between text-slate-400">
             <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">Active Forms</span>
             <FileSpreadsheet className="w-4 h-4 text-bce-cobalt" />
@@ -400,7 +400,7 @@ export function ResultsDashboardClient({
         </div>
 
         {/* Total Responses */}
-        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="bg-white p-3 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between text-slate-400">
             <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">Total Responses</span>
             <Users className="w-4 h-4 text-blue-600" />
@@ -414,7 +414,7 @@ export function ResultsDashboardClient({
         </div>
 
         {/* Overall Scope Score */}
-        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="bg-white p-3 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between text-slate-400">
             <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">Scope Rating</span>
             <Star className="w-4 h-4 text-amber-500 fill-amber-400/20" />
@@ -437,7 +437,7 @@ export function ResultsDashboardClient({
         </div>
 
         {/* Satisfaction Index */}
-        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="bg-white p-3 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between text-slate-400">
             <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">Positive Rating</span>
             <CheckCircle2 className="w-4 h-4 text-amber-500" />
@@ -454,9 +454,9 @@ export function ResultsDashboardClient({
       </div>
 
       {/* Visual Analytics Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* Chart 1: Parameter-wise Average */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+        <div className="bg-white p-3.5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3">
           <div className="border-b border-slate-100 pb-3">
             <h3 className="text-sm font-bold text-slate-900">
               Parameter-wise Average Rating (1.00 — 5.00)
@@ -469,7 +469,7 @@ export function ResultsDashboardClient({
         </div>
 
         {/* Chart 2: Rating Distribution Stacked Bar */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+        <div className="bg-white p-3.5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3">
           <div className="border-b border-slate-100 pb-3">
             <h3 className="text-sm font-bold text-slate-900">
               Rating Distribution by Parameter (%)
@@ -485,7 +485,7 @@ export function ResultsDashboardClient({
         </div>
 
         {/* Chart 3: Overall Distribution Donut */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+        <div className="bg-white p-3.5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3">
           <div className="border-b border-slate-100 pb-3">
             <h3 className="text-sm font-bold text-slate-900">Overall Rating Tier Breakdown</h3>
             <p className="text-xs text-slate-500">
@@ -496,7 +496,7 @@ export function ResultsDashboardClient({
         </div>
 
         {/* Chart 4: Faculty Comparison (when data exists) */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+        <div className="bg-white p-3.5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3">
           <div className="border-b border-slate-100 pb-3">
             <h3 className="text-sm font-bold text-slate-900">
               Faculty Comparative Benchmark
@@ -510,7 +510,7 @@ export function ResultsDashboardClient({
       </div>
 
       {/* Forms Performance & Individual Reports Table */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+      <div className="bg-white p-3.5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3.5 sm:space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
           <div>
             <h3 className="text-sm font-bold text-slate-900">
@@ -619,14 +619,14 @@ export function ResultsDashboardClient({
             </div>
 
             {/* Mobile Cards View */}
-            <div className="md:hidden space-y-3">
+            <div className="md:hidden space-y-2.5 sm:space-y-3">
               {matchingForms.map(form => {
                 const compItem = report.facultyComparisons.find(c => c.formId === form.id);
                 const respCount = compItem ? compItem.responseCount : form.response_count || 0;
                 const score = compItem ? compItem.averageScore : null;
 
                 return (
-                  <div key={form.id} className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                  <div key={form.id} className="p-3 sm:p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5 sm:space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <h4 className="font-bold text-slate-900 text-sm">{form.faculty?.name}</h4>

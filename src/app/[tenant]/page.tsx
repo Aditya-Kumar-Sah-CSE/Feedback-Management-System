@@ -29,7 +29,7 @@ export default async function TenantHomePage({ params }: TenantPageProps) {
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
       {/* Top Banner */}
-      <div className="bg-slate-900 text-white text-[11px] sm:text-xs py-1.5 sm:py-2 px-3 sm:px-4 border-b border-slate-800">
+      <div className="bg-slate-900 text-white text-[11px] sm:text-xs py-1.5 sm:py-2 px-2.5 sm:px-4 border-b border-slate-800">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-1 sm:gap-2 text-center sm:text-left">
           <div className="flex items-center gap-1.5 sm:gap-2">
             <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
@@ -58,7 +58,7 @@ export default async function TenantHomePage({ params }: TenantPageProps) {
 
       {/* Main Header with Tenant Branding */}
       <header className="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-3.5 sm:px-6 lg:px-8 py-2.5 sm:py-3.5 flex justify-between items-center gap-2">
+        <div className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 py-2 sm:py-3.5 flex justify-between items-center gap-2">
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-white flex items-center justify-center font-bold text-lg sm:text-xl shadow-md border border-slate-200 shrink-0 overflow-hidden p-1">
               {tenant.logo ? (
@@ -104,14 +104,14 @@ export default async function TenantHomePage({ params }: TenantPageProps) {
       </header>
 
       {/* Discovery Flow Area */}
-      <main id="discovery-section" className="flex-1 max-w-6xl mx-auto w-full px-3.5 sm:px-6 lg:px-8 py-6 sm:py-10 scroll-mt-14">
-        <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      <main id="discovery-section" className="flex-1 max-w-6xl mx-auto w-full px-2.5 sm:px-6 lg:px-8 py-3.5 sm:py-10 scroll-mt-14">
+        <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
-            <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
               Find Your Feedback Form
             </h2>
-            <p className="text-sm text-slate-500">
+            <p className="text-xs sm:text-sm text-slate-500">
               Follow the discovery path: Year → Branch → Semester → Faculty & Subject.
             </p>
           </div>
@@ -126,14 +126,14 @@ export default async function TenantHomePage({ params }: TenantPageProps) {
         />
 
         {/* All Published Forms Grid for this Tenant */}
-        <div className="mt-14">
+        <div className="mt-8 sm:mt-14">
           <AllFeedbackFormsSection initialData={initialActiveForms} collegeId={tenant.collegeId} />
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-slate-200 mt-12 py-8 text-center text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto px-4 space-y-2">
+      <footer className="bg-white border-t border-slate-200 mt-8 sm:mt-12 py-5 sm:py-8 text-center text-xs text-slate-500">
+        <div className="max-w-7xl mx-auto px-2.5 sm:px-4 space-y-2">
           <p className="font-medium text-slate-700">
             {tenant.name} ({tenant.shortName})
           </p>

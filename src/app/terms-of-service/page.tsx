@@ -17,7 +17,7 @@ export default function TermsOfServicePage() {
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
       {/* Top Header */}
       <header className="h-16 sm:h-[72px] bg-white border-b border-slate-200 sticky top-0 z-30 flex items-center shrink-0">
-        <div className="max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
+        <div className="max-w-5xl mx-auto w-full px-2.5 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
           <Link href="/" className="flex items-center gap-3 min-w-0 group">
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold shadow-sm border border-slate-800 shrink-0 group-hover:bg-slate-800 transition-colors">
               <School className="w-5 h-5 text-blue-400" />
@@ -43,9 +43,9 @@ export default function TermsOfServicePage() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
+      <main className="flex-1 max-w-4xl mx-auto w-full px-2.5 sm:px-6 lg:px-8 py-4 sm:py-14">
         {/* Title & Metadata Banner */}
-        <div className="border-b border-slate-200 pb-6 mb-8">
+        <div className="border-b border-slate-200 pb-4 sm:pb-6 mb-5 sm:mb-8">
           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200/60 mb-3">
             <FileText className="w-3.5 h-3.5" />
             <span>Terms of Use</span>

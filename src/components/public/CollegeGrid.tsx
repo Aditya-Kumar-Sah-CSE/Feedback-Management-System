@@ -65,17 +65,17 @@ export function CollegeGrid({ colleges }: CollegeGridProps) {
 
   return (
     <>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-6">
         {colleges.map((college) => {
           const isCopied = justCopiedId === college.collegeId;
 
           return (
             <div
               key={college.collegeId}
-              className="bg-white rounded-xl border border-slate-200 hover:border-slate-300 shadow-sm hover:shadow transition-all duration-200 flex flex-col p-5 sm:p-6 text-center group"
+              className="bg-white rounded-xl border border-slate-200 hover:border-slate-300 shadow-sm hover:shadow transition-all duration-200 flex flex-col p-3.5 sm:p-6 text-center group"
             >
               {/* College Logo or Fallback Monogram */}
-              <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto mb-4 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-center p-2 text-slate-700 overflow-hidden shrink-0">
+              <div className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-2.5 sm:mb-4 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-center p-2 text-slate-700 overflow-hidden shrink-0">
                 {college.logo ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -99,20 +99,20 @@ export function CollegeGrid({ colleges }: CollegeGridProps) {
               </h2>
 
               {/* Short Code / Name */}
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mt-1 mb-2">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mt-1 mb-1.5 sm:mb-2">
                 {college.shortName || college.code}
               </p>
 
               {/* Optional Location / City */}
               {college.address && (
-                <p className="text-[11px] text-slate-500 flex items-center justify-center gap-1 mb-4 truncate">
+                <p className="text-[11px] text-slate-500 flex items-center justify-center gap-1 mb-2.5 sm:mb-4 truncate">
                   <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
                   <span className="truncate">{college.address}</span>
                 </p>
               )}
 
               {/* Card Actions */}
-              <div className="mt-auto pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
+              <div className="mt-auto pt-2.5 sm:pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
                 <Link
                   href={`/${college.slug}`}
                   className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-blue-600 hover:text-blue-800 transition-colors py-1 group/btn"

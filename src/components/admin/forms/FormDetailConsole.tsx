@@ -170,9 +170,9 @@ export function FormDetailConsole({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Top Header */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+      <div className="bg-white p-3.5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3 sm:space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
@@ -413,12 +413,12 @@ export function FormDetailConsole({
       </div>
 
       {/* Grid: Response Synchronization + Academic Metadata */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Left 2 Cols: Response Synchronization & Evaluation Parameters */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-4 sm:space-y-6">
           {/* Response Destination & Sync Card */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="bg-white p-3.5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3.5 sm:space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <RefreshCw className={`w-4 h-4 text-bce-cobalt ${isPending ? 'animate-spin' : ''}`} />
@@ -430,7 +430,7 @@ export function FormDetailConsole({
               </div>
 
               <span
-                className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold self-start sm:self-auto ${
                   isNative
                     ? 'bg-purple-100 text-purple-800 border border-purple-200'
                     : 'bg-blue-100 text-blue-800 border border-blue-200'
@@ -440,8 +440,8 @@ export function FormDetailConsole({
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-4 text-center">
+              <div className="p-3 sm:p-4 bg-slate-50 rounded-2xl border border-slate-100">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
                   Responses Recorded
                 </span>
@@ -451,7 +451,7 @@ export function FormDetailConsole({
                 <span className="text-[10px] text-slate-500">In Google Sheet</span>
               </div>
 
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+              <div className="p-3 sm:p-4 bg-slate-50 rounded-2xl border border-slate-100">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
                   Last Synced
                 </span>
@@ -463,13 +463,13 @@ export function FormDetailConsole({
                 <span className="text-[10px] text-slate-500">Forms → Sheet</span>
               </div>
 
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col justify-center items-center">
+              <div className="p-3 sm:p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col justify-center items-center">
                 <button
                   type="button"
                   onClick={handleSyncResponses}
                   disabled={isPending || !form.google_form_id || !form.google_sheet_id}
                   aria-busy={pendingAction === 'SYNC' ? 'true' : undefined}
-                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-bce-cobalt hover:bg-bce-navy text-white text-xs font-bold rounded-xl transition-colors disabled:opacity-50 shadow-xs cursor-pointer"
+                  className="w-full inline-flex items-center justify-center gap-2 px-3.5 sm:px-4 py-2 bg-bce-cobalt hover:bg-bce-navy text-white text-xs font-bold rounded-xl transition-colors disabled:opacity-50 shadow-xs cursor-pointer"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${pendingAction === 'SYNC' ? 'animate-spin' : ''}`} />
                   <span>{pendingAction === 'SYNC' ? 'Syncing Responses...' : 'Sync Responses Now'}</span>
@@ -494,7 +494,7 @@ export function FormDetailConsole({
 
           {/* Standard 8 BCE Evaluation Parameters */}
           {/* Form Questions & Structure */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+          <div className="bg-white p-3.5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3.5 sm:space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">
@@ -510,7 +510,7 @@ export function FormDetailConsole({
             </div>
 
             {/* Identification Fields */}
-            <div className="p-3.5 bg-blue-50/50 rounded-xl border border-blue-100 space-y-2">
+            <div className="p-3 sm:p-3.5 bg-blue-50/50 rounded-xl border border-blue-100 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-blue-950">Student Identification</span>
                 <span className="px-1.5 py-0.5 rounded text-[9px] bg-blue-100 text-blue-800 font-semibold">Required *</span>
@@ -536,7 +536,7 @@ export function FormDetailConsole({
               {BCE_FEEDBACK_PARAMETERS.map(param => (
                 <div
                   key={param.id}
-                  className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                  className="p-2.5 sm:p-3.5 bg-slate-50 rounded-xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
                 >
                   <div>
                     <div className="font-bold text-xs text-slate-800">
@@ -561,7 +561,7 @@ export function FormDetailConsole({
             </div>
 
             {/* Optional Suggestions */}
-            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="p-2.5 sm:p-3.5 bg-slate-50 rounded-xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <div className="flex items-center gap-2">
                   <span className="font-bold text-xs text-slate-800">Comments / Suggestions</span>
@@ -579,9 +579,9 @@ export function FormDetailConsole({
         </div>
 
         {/* Right Col: Academic Metadata & Audit Trail */}
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
           {/* Academic Details Card */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3.5">
+          <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3 sm:space-y-3.5">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 border-b border-slate-100 pb-2 flex items-center gap-1.5">
               <GraduationCap className="w-4 h-4 text-bce-cobalt" />
               Academic Assignment Details
@@ -661,7 +661,7 @@ export function FormDetailConsole({
           </div>
 
           {/* Form Timestamps Card */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+          <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-2.5 sm:space-y-3">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 border-b border-slate-100 pb-2 flex items-center gap-1.5">
               <Calendar className="w-4 h-4 text-bce-cobalt" />
               Lifecycle Timestamps
@@ -688,7 +688,7 @@ export function FormDetailConsole({
           </div>
 
           {/* Form Audit Trail */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+          <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-2.5 sm:space-y-3">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 border-b border-slate-100 pb-2 flex items-center gap-1.5">
               <Activity className="w-4 h-4 text-bce-cobalt" />
               Form Audit Trail ({auditLogs.length})

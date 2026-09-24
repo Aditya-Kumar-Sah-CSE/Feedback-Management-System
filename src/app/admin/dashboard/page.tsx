@@ -193,7 +193,7 @@ export default async function AdminDashboardPage() {
   const googleStatus = activeCollegeId ? await getGoogleConfigStatus(activeCollegeId) : null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <AdminDashboardTabs
         academicYears={(academicYears as AcademicYear[]) || []}
         branches={(branches as Branch[]) || []}

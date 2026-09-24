@@ -55,26 +55,26 @@ export default function AdminForgotPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col justify-center py-8 sm:py-12 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-slate-950 via-bce-navy to-slate-900">
+    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col justify-center py-5 sm:py-12 px-2.5 sm:px-6 lg:px-8 bg-gradient-to-br from-slate-950 via-bce-navy to-slate-900">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <div className="mx-auto w-14 h-14 rounded-2xl bg-gradient-to-tr from-bce-cobalt to-amber-500 p-0.5 shadow-xl flex items-center justify-center">
+        <div className="mx-auto w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-bce-cobalt to-amber-500 p-0.5 shadow-xl flex items-center justify-center">
           <div className="w-full h-full bg-bce-navy rounded-2xl flex items-center justify-center">
-            <School className="w-8 h-8 text-amber-400" />
+            <School className="w-7 h-7 sm:w-8 sm:h-8 text-amber-400" />
           </div>
         </div>
 
-        <h2 className="mt-5 text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
+        <h2 className="mt-4 sm:mt-5 text-xl sm:text-3xl font-extrabold tracking-tight text-white">
           Reset Admin Password
         </h2>
-        <p className="mt-1.5 text-xs text-slate-400 font-medium">
+        <p className="mt-1 sm:mt-1.5 text-xs text-slate-400 font-medium">
           Institutional Feedback Platform • Password Recovery
         </p>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4 sm:px-0">
-        <div className="bg-slate-800/90 backdrop-blur-md py-8 px-4 sm:px-10 shadow-2xl rounded-2xl border border-slate-700/60">
+      <div className="mt-4 sm:mt-8 sm:mx-auto sm:w-full sm:max-w-md px-1 sm:px-0">
+        <div className="bg-slate-800/90 backdrop-blur-md py-5 px-3.5 sm:py-8 sm:px-10 shadow-2xl rounded-2xl border border-slate-700/60">
           {isSubmitted ? (
-            <div className="space-y-5 text-center">
+            <div className="space-y-4 sm:space-y-5 text-center">
               <div className="mx-auto w-12 h-12 rounded-full bg-emerald-950/80 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
                 <CheckCircle2 className="w-6 h-6" />
               </div>
@@ -96,7 +96,7 @@ export default function AdminForgotPasswordPage() {
               </div>
             </div>
           ) : (
-            <form className="space-y-5" onSubmit={handleResetRequest}>
+            <form className="space-y-4 sm:space-y-5" onSubmit={handleResetRequest}>
               <p className="text-xs text-slate-300 leading-relaxed">
                 Enter your registered administrator email address. We will send a secure password reset link to your inbox.
               </p>

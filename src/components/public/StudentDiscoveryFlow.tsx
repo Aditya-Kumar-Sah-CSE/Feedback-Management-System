@@ -345,10 +345,10 @@ export function StudentDiscoveryFlow({
   const selectedSubject = subjects.find(s => s.id === selectedSubjectId);
 
   return (
-    <div className="space-y-6 sm:space-y-8">
+    <div className="space-y-4 sm:space-y-8">
       {/* 5-Step Cascading Selection Box */}
-      <div className="bg-white rounded-2xl p-4 sm:p-7 border border-slate-200 shadow-sm space-y-5 sm:space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-4 border-b border-slate-100">
+      <div className="bg-white rounded-2xl p-3.5 sm:p-7 border border-slate-200 shadow-sm space-y-3.5 sm:space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 sm:pb-4 border-b border-slate-100">
           <div>
             <h4 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-bce-cobalt" />
@@ -371,7 +371,7 @@ export function StudentDiscoveryFlow({
         </div>
 
         {/* Tier 1: Academic Year + Branch + Semester */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-4">
           {/* Step 1: Academic Year */}
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5 flex items-center gap-1.5">
@@ -448,7 +448,7 @@ export function StudentDiscoveryFlow({
 
         {/* Prominent Banner for Official Semester Feedback Form */}
         {semesterFormResult && semesterFormResult.status === 'PUBLISHED' && semesterFormResult.form && (
-          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-bce-navy via-slate-900 to-indigo-950 text-white shadow-md border border-indigo-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="p-3.5 sm:p-5 rounded-2xl bg-gradient-to-r from-bce-navy via-slate-900 to-indigo-950 text-white shadow-md border border-indigo-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-slate-950 uppercase tracking-wider">
@@ -484,7 +484,7 @@ export function StudentDiscoveryFlow({
         )}
 
         {/* Tier 2: Faculty & Subject Cascading Filters */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4 pt-2 border-t border-slate-100">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-4 pt-2 border-t border-slate-100">
           <div className="sm:col-span-2 text-xs font-semibold text-slate-500">
             Or select an individual faculty member and subject below:
           </div>
@@ -569,19 +569,19 @@ export function StudentDiscoveryFlow({
       </div>
 
       {/* Available Feedback Results Area */}
-      <div className="space-y-4">
+      <div className="space-y-3 sm:space-y-4">
         <div className="flex items-center justify-between">
-          <h4 className="text-base font-bold text-slate-900 flex items-center gap-2">
+          <h4 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-bce-cobalt" />
             Evaluation Feedback Form
           </h4>
-          <span className="text-xs text-slate-500 font-medium">
+          <span className="text-[11px] sm:text-xs text-slate-500 font-medium">
             {selectedBranch?.code} • {selectedSemester?.name} • {selectedYear?.name}
           </span>
         </div>
 
         {loadingForm ? (
-          <div className="p-12 bg-white rounded-2xl border border-slate-200 shadow-xs text-center space-y-3">
+          <div className="p-6 sm:p-12 bg-white rounded-2xl border border-slate-200 shadow-xs text-center space-y-3">
             <Loader2 className="w-8 h-8 animate-spin text-bce-cobalt mx-auto" />
             <p className="text-xs font-semibold text-slate-700">
               Checking feedback form availability for {selectedFaculty?.name} — {selectedSubject?.name}...
@@ -592,11 +592,11 @@ export function StudentDiscoveryFlow({
           <PublicFeedbackCard form={matchedForm} isClosed={formStatus === 'CLOSED'} />
         ) : selectedSubjectId ? (
           /* Subject Selected but No Published Form Found */
-          <div className="bg-white rounded-2xl p-10 border border-slate-200 text-center space-y-3 shadow-xs">
+          <div className="bg-white rounded-2xl p-5 sm:p-10 border border-slate-200 text-center space-y-3 shadow-xs">
             <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-600 mx-auto flex items-center justify-center">
               <AlertCircle className="w-6 h-6" />
             </div>
-            <h5 className="text-base font-bold text-slate-900">
+            <h5 className="text-sm sm:text-base font-bold text-slate-900">
               No Published Feedback Form Available
             </h5>
             <p className="text-xs text-slate-600 max-w-md mx-auto leading-relaxed">
@@ -612,7 +612,7 @@ export function StudentDiscoveryFlow({
           </div>
         ) : (
           /* Prompt to complete selections */
-          <div className="bg-white rounded-2xl p-10 border border-dashed border-slate-300 text-center space-y-3">
+          <div className="bg-white rounded-2xl p-5 sm:p-10 border border-dashed border-slate-300 text-center space-y-3">
             <div className="w-12 h-12 rounded-full bg-blue-50 text-bce-cobalt mx-auto flex items-center justify-center">
               <Sparkles className="w-6 h-6" />
             </div>

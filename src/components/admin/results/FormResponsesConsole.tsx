@@ -186,9 +186,9 @@ export function FormResponsesConsole({ formId, initialData }: Props) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Top Header Card */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+      <div className="bg-white p-3.5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3.5 sm:space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <Link
@@ -467,7 +467,7 @@ export function FormResponsesConsole({ formId, initialData }: Props) {
 
         {/* Pagination Bar */}
         {data.totalPages > 1 && (
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 bg-slate-50 border-t border-slate-200 text-xs text-slate-600">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 sm:p-4 bg-slate-50 border-t border-slate-200 text-xs text-slate-600">
             <div>
               Showing <span className="font-bold text-slate-900">{(currentPage - 1) * pageSize + 1}</span> to{' '}
               <span className="font-bold text-slate-900">
@@ -507,10 +507,10 @@ export function FormResponsesConsole({ formId, initialData }: Props) {
 
       {/* Detail Modal */}
       {selectedDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-slate-950/60 backdrop-blur-xs">
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
             {/* Modal Header */}
-            <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+            <div className="p-3 sm:p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
                   <User className="w-4 h-4" />
@@ -532,7 +532,7 @@ export function FormResponsesConsole({ formId, initialData }: Props) {
             </div>
 
             {/* Modal Body */}
-            <div className="p-5 overflow-y-auto space-y-5 text-xs text-slate-600">
+            <div className="p-3.5 sm:p-5 overflow-y-auto space-y-3.5 sm:space-y-5 text-xs text-slate-600">
               {/* Identity Details Card */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200">
                 <div>
@@ -612,7 +612,7 @@ export function FormResponsesConsole({ formId, initialData }: Props) {
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+            <div className="p-3 sm:p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
               <button
                 type="button"
                 onClick={() => handleDownloadResponsePdf(selectedDetail.responseId)}

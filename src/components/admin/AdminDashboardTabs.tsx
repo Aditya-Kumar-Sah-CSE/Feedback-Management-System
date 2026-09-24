@@ -428,10 +428,10 @@ export function AdminDashboardTabs({
       )}
 
       {/* Mobile Navigation Bar with Drawer Trigger */}
-      <div className="md:hidden flex items-center justify-between bg-white px-3 sm:px-3.5 py-2.5 rounded-2xl border border-slate-200 shadow-xs min-w-0">
+      <div className="md:hidden flex items-center justify-between bg-white px-2.5 sm:px-3.5 py-2 sm:py-2.5 rounded-2xl border border-slate-200 shadow-xs min-w-0">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Tab:</span>
-          <span className="text-xs font-bold text-bce-navy bg-amber-100 text-amber-900 border border-amber-300/60 px-2.5 py-0.5 rounded-lg truncate">
+          <span className="text-xs font-bold text-bce-navy bg-amber-100 text-amber-900 border border-amber-300/60 px-2 py-0.5 rounded-lg truncate">
             {getActiveTabTitle(activeTab)}
           </span>
         </div>
@@ -450,7 +450,7 @@ export function AdminDashboardTabs({
       </div>
 
       {/* Primary Navigation Tabs */}
-      <div className="relative z-30 bg-white p-1.5 sm:p-2 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center gap-1.5 w-full max-w-full min-w-0 overflow-visible">
+      <div className="relative z-30 bg-white p-1 sm:p-2 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center gap-1 sm:gap-1.5 w-full max-w-full min-w-0 overflow-visible">
         {/* Direct Tabs: Overview, Academic Structure, Feedback Forms */}
         {directTabs.map((tab) => {
           const Icon = tab.icon;
@@ -462,7 +462,7 @@ export function AdminDashboardTabs({
                 setActiveTab(tab.id);
                 setOpenDropdown(null);
               }}
-              className={`relative inline-flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 shrink-0 whitespace-nowrap cursor-pointer select-none active:scale-95 ${
+              className={`relative inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 shrink-0 whitespace-nowrap cursor-pointer select-none active:scale-95 ${
                 isActive
                   ? 'bg-bce-navy text-amber-400 shadow-sm hover:bg-slate-900'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 hover:-translate-y-0.5'
@@ -491,7 +491,7 @@ export function AdminDashboardTabs({
           <Link
             href="/admin/dashboard/results"
             onClick={() => setIsNavigatingToResults(true)}
-            className="group relative inline-flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold text-slate-800 hover:text-slate-950 bg-gradient-to-r from-amber-50 to-amber-100/80 hover:from-amber-100 hover:to-amber-200/90 border border-amber-300/80 hover:border-amber-400 shadow-2xs hover:shadow-md hover:-translate-y-0.5 active:scale-95 active:translate-y-0 transition-all duration-200 shrink-0 whitespace-nowrap md:ml-auto cursor-pointer select-none"
+            className="group relative inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold text-slate-800 hover:text-slate-950 bg-gradient-to-r from-amber-50 to-amber-100/80 hover:from-amber-100 hover:to-amber-200/90 border border-amber-300/80 hover:border-amber-400 shadow-2xs hover:shadow-md hover:-translate-y-0.5 active:scale-95 active:translate-y-0 transition-all duration-200 shrink-0 whitespace-nowrap md:ml-auto cursor-pointer select-none"
           >
             {isNavigatingToResults ? (
               <Loader2 className="w-4 h-4 text-bce-cobalt animate-spin shrink-0" />
@@ -508,7 +508,7 @@ export function AdminDashboardTabs({
             href="/admin/dashboard/results"
             onClick={() => setIsNavigatingToResults(true)}
             title="Full Analytics Access Required - Click to upgrade your plan"
-            className="group relative inline-flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 border border-amber-400/50 hover:border-amber-400 shadow-2xs hover:shadow-md hover:-translate-y-0.5 active:scale-95 active:translate-y-0 transition-all duration-200 shrink-0 whitespace-nowrap md:ml-auto cursor-pointer select-none"
+            className="group relative inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 border border-amber-400/50 hover:border-amber-400 shadow-2xs hover:shadow-md hover:-translate-y-0.5 active:scale-95 active:translate-y-0 transition-all duration-200 shrink-0 whitespace-nowrap md:ml-auto cursor-pointer select-none"
           >
             <Lock className="w-4 h-4 text-amber-500 group-hover:scale-110 transition-transform shrink-0" />
             {isNavigatingToResults ? (

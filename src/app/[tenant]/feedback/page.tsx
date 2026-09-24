@@ -45,7 +45,7 @@ export default async function TenantFeedbackPortalPage({ params }: TenantFeedbac
 
       {/* Header with Tenant Branding */}
       <header className="bg-white border-b border-slate-200 shadow-xs sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto px-3.5 sm:px-6 lg:px-8 py-2.5 sm:py-3.5 flex justify-between items-center gap-2">
+        <div className="max-w-6xl mx-auto px-2.5 sm:px-6 lg:px-8 py-2 sm:py-3.5 flex justify-between items-center gap-2">
           <Link href={`/${tenant.slug}`} className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white flex items-center justify-center font-bold text-base sm:text-lg shadow-md border border-slate-200 shrink-0 overflow-hidden p-1">
               {tenant.logo ? (
@@ -80,13 +80,13 @@ export default async function TenantFeedbackPortalPage({ params }: TenantFeedbac
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-6xl mx-auto w-full px-3.5 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
+      <main className="flex-1 max-w-6xl mx-auto w-full px-2.5 sm:px-6 lg:px-8 py-3.5 sm:py-8 space-y-4 sm:space-y-6">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold mb-2">
             <GraduationCap className="w-3.5 h-3.5" />
             <span>Student Feedback Portal</span>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+          <h2 className="text-xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
             Find & Submit Your Faculty Feedback
           </h2>
           <p className="text-xs sm:text-sm text-slate-600 mt-1 max-w-2xl leading-relaxed">
@@ -106,7 +106,7 @@ export default async function TenantFeedbackPortalPage({ params }: TenantFeedbac
       </main>
 
       {/* Footer */}
-      <footer className="bg-slate-900 text-slate-400 text-xs py-6 px-4 border-t border-slate-800 mt-auto">
+      <footer className="bg-slate-900 text-slate-400 text-xs py-4 px-2.5 sm:px-4 sm:py-6 border-t border-slate-800 mt-auto">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3 text-center sm:text-left">
           <div>
             <span>{tenant.name} ({tenant.shortName}) • Official Student Evaluation Portal</span>

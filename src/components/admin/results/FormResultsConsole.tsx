@@ -120,9 +120,9 @@ export function FormResultsConsole({ initialReport }: Props) {
     : `/api/admin/results/${report.formId}/pdf`;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Top Header & Action Console */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+      <div className="bg-white p-3.5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3 sm:space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
@@ -290,7 +290,7 @@ export function FormResultsConsole({ initialReport }: Props) {
 
       {/* Scope Selector Tabs for Semester Forms */}
       {isSemester && report.facultyGrids && (
-        <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs space-y-2">
+        <div className="bg-white p-2.5 sm:p-3 rounded-2xl border border-slate-200 shadow-xs space-y-2">
           <div className="flex items-center justify-between px-2 pt-1 pb-2">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
               <Layers className="w-3.5 h-3.5 text-bce-cobalt" />
@@ -337,21 +337,21 @@ export function FormResultsConsole({ initialReport }: Props) {
       )}
 
       {/* KPI Metric Summary Blocks */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         {/* Total Responses */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="bg-white p-3 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between text-slate-400">
-            <span className="text-[11px] font-bold uppercase tracking-wider">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">
               {isSemester && selectedGridIndex === -1 ? 'Total Students' : 'Total Submissions'}
             </span>
             <Users className="w-4 h-4 text-blue-600" />
           </div>
-          <div className="text-2xl font-bold text-slate-900 mt-2">
+          <div className="text-xl sm:text-2xl font-bold text-slate-900 mt-1.5 sm:mt-2">
             {isSemester && selectedGridIndex === -1
               ? (currentReport.totalStudents ?? currentReport.totalResponses)
               : currentReport.totalResponses}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">
+          <p className="text-[10px] sm:text-[11px] text-slate-500 mt-0.5 sm:mt-1 truncate">
             {isSemester && selectedGridIndex === -1
               ? 'Unique student submission(s)'
               : 'Recorded in Google Sheet'}
@@ -359,52 +359,52 @@ export function FormResultsConsole({ initialReport }: Props) {
         </div>
 
         {/* Valid Responses */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="bg-white p-3 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between text-slate-400">
-            <span className="text-[11px] font-bold uppercase tracking-wider">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">
               {isSemester && selectedGridIndex === -1 ? 'Evaluated Items' : 'Valid Evaluations'}
             </span>
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
           </div>
-          <div className="text-2xl font-bold text-slate-900 mt-2">
+          <div className="text-xl sm:text-2xl font-bold text-slate-900 mt-1.5 sm:mt-2">
             {isSemester && selectedGridIndex === -1
               ? (currentReport.evaluatedItems ?? currentReport.validResponses)
               : currentReport.validResponses}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">
+          <p className="text-[10px] sm:text-[11px] text-slate-500 mt-0.5 sm:mt-1 truncate">
             {isSemester && selectedGridIndex === -1
-              ? `${report.facultyGrids?.length || 0} faculty-subject grid(s) evaluated`
-              : `${currentReport.unansweredResponses} incomplete/unanswered`}
+              ? `${report.facultyGrids?.length || 0} faculty grids`
+              : `${currentReport.unansweredResponses} incomplete`}
           </p>
         </div>
 
         {/* Overall Average Score */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="bg-white p-3 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between text-slate-400">
-            <span className="text-[11px] font-bold uppercase tracking-wider">
-              {isSemester && selectedGridIndex === -1 ? 'Semester Benchmark' : 'Overall Rating'}
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">
+              {isSemester && selectedGridIndex === -1 ? 'Semester Avg' : 'Overall Rating'}
             </span>
             <Award className="w-4 h-4 text-amber-500" />
           </div>
-          <div className="text-2xl font-bold text-slate-900 mt-2">
+          <div className="text-xl sm:text-2xl font-bold text-slate-900 mt-1.5 sm:mt-2">
             {currentReport.hasData ? (
               <>
                 {currentReport.averageOverallScore.toFixed(2)}{' '}
-                <span className="text-xs font-medium text-slate-400">/ 5.00</span>
+                <span className="text-[11px] sm:text-xs font-medium text-slate-400">/ 5.00</span>
               </>
             ) : (
-              <span className="text-lg text-slate-400 font-semibold">No Data</span>
+              <span className="text-sm sm:text-lg text-slate-400 font-semibold">No Data</span>
             )}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">
+          <p className="text-[10px] sm:text-[11px] text-slate-500 mt-0.5 sm:mt-1 truncate">
             {currentReport.hasData
-              ? `Parameter Average: ${(currentReport.parameterAverageScore ?? currentReport.compositeAverageScore).toFixed(2)} (Q1–Q7)`
-              : 'Requires student responses'}
+              ? `Avg: ${(currentReport.parameterAverageScore ?? currentReport.compositeAverageScore).toFixed(2)}`
+              : 'Requires responses'}
           </p>
         </div>
 
         {/* Performance Grade */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="bg-white p-3 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between text-slate-400">
             <span className="text-[11px] font-bold uppercase tracking-wider">Performance Grade</span>
             <Info className="w-4 h-4 text-slate-400" />
@@ -422,7 +422,7 @@ export function FormResultsConsole({ initialReport }: Props) {
 
       {/* Comparative Matrix Section for Semester Forms (When All Subjects Combined is Selected) */}
       {isSemester && selectedGridIndex === -1 && report.facultyGrids && report.facultyGrids.length > 0 && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+        <div className="bg-white p-3.5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3.5 sm:space-y-4">
           <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
             <div>
               <h3 className="text-sm font-bold text-slate-900">
@@ -507,9 +507,9 @@ export function FormResultsConsole({ initialReport }: Props) {
       )}
 
       {/* Visual Analytics Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* Parameter-wise Average */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+        <div className="bg-white p-3.5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3">
           <div className="border-b border-slate-100 pb-3">
             <h3 className="text-sm font-bold text-slate-900">
               Evaluation Parameter Scores (1.00 — 5.00)
@@ -522,7 +522,7 @@ export function FormResultsConsole({ initialReport }: Props) {
         </div>
 
         {/* Parameter Distribution Stacked Bar */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+        <div className="bg-white p-3.5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3">
           <div className="border-b border-slate-100 pb-3">
             <h3 className="text-sm font-bold text-slate-900">
               Parameter Rating Distribution (%)
@@ -538,7 +538,7 @@ export function FormResultsConsole({ initialReport }: Props) {
         </div>
 
         {/* Overall Distribution Donut */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3 lg:col-span-2">
+        <div className="bg-white p-3.5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3 lg:col-span-2">
           <div className="border-b border-slate-100 pb-3">
             <h3 className="text-sm font-bold text-slate-900">Overall Rating Tier Breakdown</h3>
             <p className="text-xs text-slate-500">
@@ -550,7 +550,7 @@ export function FormResultsConsole({ initialReport }: Props) {
       </div>
 
       {/* Parameter-by-Parameter Breakdown (8 Cards) */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+      <div className="bg-white p-3.5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3.5 sm:space-y-4">
         <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
           <div>
             <h3 className="text-sm font-bold text-slate-900">
@@ -585,7 +585,7 @@ export function FormResultsConsole({ initialReport }: Props) {
               return (
                 <div
                   key={p.parameterId}
-                  className="p-4 bg-slate-50/70 rounded-xl border border-slate-200 space-y-3"
+                  className="p-3 sm:p-4 bg-slate-50/70 rounded-xl border border-slate-200 space-y-2.5 sm:space-y-3"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>

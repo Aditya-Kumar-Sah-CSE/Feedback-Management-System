@@ -51,7 +51,7 @@ export default async function AdminDashboardLayout({
     <div className="min-h-screen flex flex-col bg-slate-100 text-slate-900 w-full max-w-full overflow-x-hidden">
       {/* Admin Top Header */}
       <header className="bg-bce-navy text-white border-b border-bce-cobalt/60 shadow-md sticky top-0 z-40 w-full min-w-0">
-        <div className="max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2">
+        <div className="max-w-7xl w-full mx-auto px-2.5 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-white flex items-center justify-center font-bold text-sm sm:text-lg shadow-sm border border-slate-200 shrink-0 overflow-hidden p-1">
               {activeCollege?.logoUrl ? (
@@ -124,12 +124,12 @@ export default async function AdminDashboardLayout({
       </header>
 
       {/* Main Admin Content */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 min-w-0">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-2.5 sm:px-6 lg:px-8 py-2.5 sm:py-6 min-w-0">
         {children}
       </main>
 
       {/* Admin Footer */}
-      <footer className="bg-white border-t border-slate-200 py-4 px-3 sm:px-4 text-center text-xs text-slate-500 mt-auto w-full min-w-0">
+      <footer className="bg-white border-t border-slate-200 py-3 px-2.5 sm:px-4 sm:py-4 text-center text-xs text-slate-500 mt-auto w-full min-w-0">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-2">
           <span>
             Institutional Feedback Management System • Designed & Developed by{' '}

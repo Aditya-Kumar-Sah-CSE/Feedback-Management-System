@@ -20,7 +20,7 @@ export default async function HomePage() {
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
       {/* 1. Top Header (64-72px height, minimal) */}
       <header className="h-16 sm:h-[72px] bg-white border-b border-slate-200 sticky top-0 z-30 flex items-center shrink-0">
-        <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto w-full px-2.5 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
           {/* Left: Platform Identity */}
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold shadow-sm border border-slate-800 shrink-0">
@@ -48,8 +48,8 @@ export default async function HomePage() {
       </header>
 
       {/* 2. Main Content (Centered, generous whitespace, college selector) */}
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10 sm:py-16">
-        <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-14">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-2.5 sm:px-6 lg:px-8 py-4 sm:py-16">
+        <div className="text-center max-w-2xl mx-auto mb-5 sm:mb-14">
           <span className="inline-block text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-blue-600 bg-blue-50 border border-blue-200/60 rounded-full px-3 py-1 mb-3">
             Institution Portal
           </span>
@@ -66,7 +66,7 @@ export default async function HomePage() {
       </main>
 
       {/* 4. Minimal Platform Footer */}
-      <footer className="bg-white border-t border-slate-200 text-xs text-slate-500 py-6 px-4 mt-auto">
+      <footer className="bg-white border-t border-slate-200 text-xs text-slate-500 py-4 px-2.5 sm:px-4 sm:py-6 mt-auto">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
           <div>
             <p className="font-semibold text-slate-700">Feedback Management System</p>
