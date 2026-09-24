@@ -24,6 +24,13 @@ export interface PublicFormSummary {
   google_form_url?: string | null;
   published_at?: string | null;
   closed_at?: string | null;
+  college?: {
+    id: string;
+    name: string;
+    code: string;
+    slug?: string;
+    logo_url?: string | null;
+  };
   faculty?: {
     id: string;
     name: string;
@@ -236,6 +243,7 @@ export async function getPublicFeedbackFormAction(
         google_form_url,
         published_at,
         closed_at,
+        college:colleges(id, name, code, slug, logo_url),
         faculty:faculties(id, name, department, designation),
         subject:subjects(id, name, code),
         academic_year:academic_years(id, name),
@@ -336,6 +344,7 @@ export async function getPublicFeedbackFormByIdAction(
         google_form_url,
         published_at,
         closed_at,
+        college:colleges(id, name, code, slug, logo_url),
         faculty:faculties(id, name, department, designation),
         subject:subjects(id, name, code),
         academic_year:academic_years(id, name),

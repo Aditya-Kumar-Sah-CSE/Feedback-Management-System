@@ -38,8 +38,19 @@ export default async function AdminInstitutionsLayout({
       <header className="bg-bce-navy text-white border-b border-bce-cobalt/60 shadow-md sticky top-0 z-40 w-full min-w-0">
         <div className="max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-bce-cobalt to-amber-500 flex items-center justify-center font-bold text-sm sm:text-lg shadow-sm border border-amber-400/30 text-amber-300 shrink-0">
-              <School className="w-4 h-4 sm:w-5 sm:h-5" />
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-white flex items-center justify-center font-bold text-sm sm:text-lg shadow-sm border border-slate-200 shrink-0 overflow-hidden p-1">
+              {activeCollege?.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={activeCollege.logoUrl}
+                  alt={`${activeCollege.name} Logo`}
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-tr from-bce-cobalt to-amber-500 rounded-lg flex items-center justify-center text-amber-300">
+                  <School className="w-4 h-4 sm:w-5 sm:h-5" />
+                </div>
+              )}
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 sm:gap-2">

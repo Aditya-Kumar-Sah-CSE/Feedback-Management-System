@@ -263,6 +263,7 @@ interface Props {
   activeCollegeName?: string;
   activeCollegeCode?: string;
   activeCollegeSlug?: string;
+  activeCollegeLogoUrl?: string | null;
   googleStatus?: {
     connected: boolean;
     status: string;
@@ -293,6 +294,7 @@ export function AdminDashboardTabs({
   activeCollegeName = 'Your Institution',
   activeCollegeCode,
   activeCollegeSlug,
+  activeCollegeLogoUrl,
   googleStatus,
 }: Props) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -443,6 +445,7 @@ export function AdminDashboardTabs({
           onSignOut={handleSignOut}
           activeCollegeName={activeCollegeName}
           publicSlug={activeCollegeSlug}
+          logoUrl={activeCollegeLogoUrl}
         />
       </div>
 

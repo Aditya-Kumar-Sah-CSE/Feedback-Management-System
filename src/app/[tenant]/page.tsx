@@ -60,8 +60,19 @@ export default async function TenantHomePage({ params }: TenantPageProps) {
       <header className="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-3.5 sm:px-6 lg:px-8 py-2.5 sm:py-3.5 flex justify-between items-center gap-2">
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-            <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-slate-900 to-blue-900 text-amber-400 flex items-center justify-center font-bold text-lg sm:text-xl shadow-md border border-slate-800 shrink-0">
-              <School className="w-5 h-5 sm:w-6 sm:h-6 text-amber-400" />
+            <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-white flex items-center justify-center font-bold text-lg sm:text-xl shadow-md border border-slate-200 shrink-0 overflow-hidden p-1">
+              {tenant.logo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={tenant.logo}
+                  alt={`${tenant.name} Logo`}
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-slate-900 to-blue-900 rounded-lg flex items-center justify-center text-amber-400">
+                  <School className="w-5 h-5 sm:w-6 sm:h-6 text-amber-400" />
+                </div>
+              )}
             </div>
             <div className="min-w-0">
               <h1 className="text-sm sm:text-xl font-bold tracking-tight text-slate-900 truncate sm:whitespace-normal">

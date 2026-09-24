@@ -215,6 +215,7 @@ export default async function AdminDashboardPage() {
         activeCollegeName={session.activeCollege?.name || 'Your Institution'}
         activeCollegeCode={session.activeCollege?.code || undefined}
         activeCollegeSlug={session.activeCollege?.slug || undefined}
+        activeCollegeLogoUrl={session.activeCollege?.logoUrl || undefined}
         googleStatus={
           googleStatus
             ? {

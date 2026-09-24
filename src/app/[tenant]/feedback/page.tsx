@@ -47,8 +47,19 @@ export default async function TenantFeedbackPortalPage({ params }: TenantFeedbac
       <header className="bg-white border-b border-slate-200 shadow-xs sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-3.5 sm:px-6 lg:px-8 py-2.5 sm:py-3.5 flex justify-between items-center gap-2">
           <Link href={`/${tenant.slug}`} className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-slate-900 to-blue-900 text-amber-400 flex items-center justify-center font-bold text-base sm:text-lg shadow-md border border-slate-800 shrink-0">
-              <School className="w-5 h-5 text-amber-400" />
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white flex items-center justify-center font-bold text-base sm:text-lg shadow-md border border-slate-200 shrink-0 overflow-hidden p-1">
+              {tenant.logo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={tenant.logo}
+                  alt={`${tenant.name} Logo`}
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-slate-900 to-blue-900 rounded-lg flex items-center justify-center text-amber-400">
+                  <School className="w-5 h-5 text-amber-400" />
+                </div>
+              )}
             </div>
             <div className="min-w-0">
               <h1 className="text-sm sm:text-lg font-bold tracking-tight text-slate-900 truncate">

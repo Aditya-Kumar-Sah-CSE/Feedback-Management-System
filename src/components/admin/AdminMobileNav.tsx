@@ -32,6 +32,7 @@ interface Props {
   onSignOut: () => void;
   activeCollegeName?: string;
   publicSlug?: string;
+  logoUrl?: string | null;
 }
 
 export function AdminMobileNav({
@@ -44,6 +45,7 @@ export function AdminMobileNav({
   onSignOut,
   activeCollegeName,
   publicSlug,
+  logoUrl,
 }: Props) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -133,11 +135,22 @@ export function AdminMobileNav({
         {/* Drawer Header */}
         <div className="p-4 border-b border-bce-cobalt/60 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-bce-cobalt to-amber-500 flex items-center justify-center font-bold text-amber-300 shadow-xs">
-              <School className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center font-bold shadow-xs overflow-hidden p-1 shrink-0">
+              {logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={logoUrl}
+                  alt="College Logo"
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-tr from-bce-cobalt to-amber-500 rounded-lg flex items-center justify-center text-amber-300">
+                  <School className="w-5 h-5" />
+                </div>
+              )}
             </div>
             <div>
-              <h2 className="font-extrabold text-sm tracking-tight text-white">BCE Feedback Portal</h2>
+              <h2 className="font-extrabold text-sm tracking-tight text-white">{activeCollegeName || 'Feedback Portal'}</h2>
               <p className="text-[10px] text-amber-400 font-semibold uppercase tracking-wider">Admin Console</p>
             </div>
           </div>

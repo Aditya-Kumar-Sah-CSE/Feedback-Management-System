@@ -4,6 +4,18 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   serverExternalPackages: ['pdfkit'],
   transpilePackages: ['lucide-react'],
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'cdn.corenexis.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.supabase.co',
+      },
+    ],
+  },
   // Ensure Vercel output tracing includes all pdfkit runtime assets
   // (standard font .cjs chunks resolved via package #imports map at runtime)
   outputFileTracingIncludes: {
